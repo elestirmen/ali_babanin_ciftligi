@@ -7,6 +7,7 @@
     <meta name="theme-color" content="#5D4037">
     <title>{% block title %}Ali Baba'nın Çiftliği{% endblock %}</title>
     <link rel="manifest" href="{{ url_for('manifest') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png', v=asset_version) }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
 
     <!-- Leaflet CSS -->
@@ -23,7 +24,7 @@
     <!-- Navbar -->
     <nav class="navbar">
         <a href="{{ url_for('public_home') }}" class="navbar-brand">
-            <span class="brand-icon">🐝</span>
+            <img src="{{ url_for('static', filename='img/site-logo.png', v=asset_version) }}" alt="" class="brand-icon" width="34" height="34">
             <span>Ali Baba'nın Çiftliği</span>
         </a>
         <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>

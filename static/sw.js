@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ali-baba-public-v3';
+const CACHE_NAME = 'ali-baba-public-v6';
 const PUBLIC_ASSETS = [
   '/',
   '/offline',
@@ -7,6 +7,9 @@ const PUBLIC_ASSETS = [
   '/static/js/pwa.js',
   '/static/js/public-guide.js',
   '/static/img/public-hero.webp',
+  '/static/img/brand-illustration.png',
+  '/static/img/site-logo.png',
+  '/static/img/favicon-32.png',
   '/static/img/icon-192.png',
   '/static/img/icon-512.png'
 ];

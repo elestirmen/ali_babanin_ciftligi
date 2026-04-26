@@ -85,6 +85,25 @@
                 });
             });
         }
+
+        document.querySelectorAll('.danger-delete-form').forEach(function(form) {
+            form.addEventListener('submit', function(event) {
+                var label = form.dataset.deleteLabel || 'Bu kayıt';
+                var warning = form.dataset.deleteWarning || 'Bu işlem geri alınamaz.';
+                var expected = 'SIL';
+                var message = label + ' silinecek.\n\n' + warning + '\n\nDevam etmek için SIL yazın.';
+                var confirmation = window.prompt(message, '');
+                var normalized = confirmation === null ? '' : confirmation.trim().toUpperCase();
+                if (normalized !== expected && normalized !== 'SİL') {
+                    event.preventDefault();
+                    return;
+                }
+                var input = form.querySelector('input[name="confirm_text"]');
+                if (input) {
+                    input.value = expected;
+                }
+            });
+        });
     </script>
     <script src="{{ url_for('static', filename='js/pwa.js', v=asset_version) }}"></script>
 

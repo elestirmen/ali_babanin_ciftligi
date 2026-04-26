@@ -1657,6 +1657,10 @@ textarea.form-control {
     box-shadow: var(--shadow-sm);
 }
 
+.js-only-hidden {
+    display: none !important;
+}
+
 .filter-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -1752,8 +1756,37 @@ textarea.form-control {
 
 .table-actions {
     display: flex;
+    align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     white-space: nowrap;
+}
+
+.inline-delete-form {
+    margin: 0;
+}
+
+.danger-zone {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px;
+    background: var(--color-danger-bg);
+    border: 1px solid #EF9A9A;
+    border-radius: 8px;
+}
+
+.danger-zone strong {
+    color: var(--color-danger);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.danger-zone p {
+    color: #7F1D1D;
+    font-size: 0.88rem;
+    margin: 0;
 }
 
 .admin-action-grid {
@@ -2046,6 +2079,11 @@ textarea.form-control {
     }
 
     .public-cta {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .danger-zone {
         align-items: stretch;
         flex-direction: column;
     }

@@ -7,7 +7,7 @@
     <div class="page-header">
         <div>
             <h1>Kovan Tablosu</h1>
-            <div class="subtitle">{{ total_count }} kayıt listeleniyor. Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın.</div>
+            <div class="subtitle"><span id="hiveVisibleCount">{{ total_count }}</span> / {{ total_count }} kayıt gösteriliyor. Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın.</div>
         </div>
         <div class="btn-group">
             <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">Yeni Oğul</a>
@@ -15,14 +15,14 @@
         </div>
     </div>
 
-    <form method="GET" class="table-filter-bar">
-        <input type="search" name="q" class="form-control" value="{{ query }}" placeholder="Kovan, arılık veya durum ara">
-        <select name="tip" class="form-control">
+    <form method="GET" class="table-filter-bar" id="hiveLiveFilter">
+        <input type="search" name="q" class="form-control" value="{{ query }}" placeholder="Kovan, arılık veya durum ara" autocomplete="off">
+        <select name="tip" class="form-control" aria-label="Kovan tipi">
             <option value="all" {% if selected_type == 'all' %}selected{% endif %}>Tüm kovanlar</option>
             <option value="swarm" {% if selected_type == 'swarm' %}selected{% endif %}>Oğul kovanları</option>
             <option value="fixed" {% if selected_type == 'fixed' %}selected{% endif %}>Sabit kovanlar</option>
         </select>
-        <select name="aktif" class="form-control">
+        <select name="aktif" class="form-control" aria-label="Aktiflik">
             <option value="all" {% if active_filter == 'all' %}selected{% endif %}>Aktif + pasif</option>
             <option value="1" {% if active_filter == '1' %}selected{% endif %}>Sadece aktif</option>
             <option value="0" {% if active_filter == '0' %}selected{% endif %}>Sadece pasif</option>
@@ -30,7 +30,8 @@
         <button type="submit" class="btn btn-primary">Filtrele</button>
     </form>
 
-    {% if selected_type in ['all', 'swarm'] %}
+    {% if true %}
+        <section data-hive-section="swarm">
         <h2 class="table-section-title">Oğul Kovanları</h2>
         {% if swarm_hives %}
             <div class="admin-table-wrap">
@@ -47,7 +48,7 @@
                     </thead>
                     <tbody>
                         {% for hive in swarm_hives %}
-                            <tr>
+                            <tr data-hive-row data-hive-type="swarm" data-active="{{ hive.aktif }}" data-search="{{ hive.ad }} {{ hive.durum }} {{ hive.son_kontrol_tarihi or '' }} {{ 'aktif' if hive.aktif else 'pasif' }}">
                                 <td><strong>{{ hive.ad }}</strong></td>
                                 <td>{{ hive.durum }}</td>
                                 <td>{{ hive.son_kontrol_tarihi|format_date }}</td>
@@ -69,6 +70,13 @@
                                 <td class="table-actions">
                                     <a href="{{ url_for('swarm_detail', id=hive.id) }}" class="btn btn-outline btn-sm">Detay</a>
                                     <a href="{{ url_for('swarm_edit', id=hive.id) }}" class="btn btn-outline btn-sm">Düzenle</a>
+                                    <form method="POST" action="{{ url_for('swarm_delete', id=hive.id) }}" class="danger-delete-form inline-delete-form"
+                                          data-delete-label="{{ hive.ad }}"
+                                          data-delete-warning="Bu oğul kovanı kaydı kalıcı olarak silinir. Bu işlem geri alınamaz.">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="confirm_text" value="">
+                                        <button type="submit" class="btn btn-danger btn-sm">Sil</button>
+                                    </form>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -78,9 +86,11 @@
         {% else %}
             <div class="empty-state"><p>Filtreye uyan oğul kovanı yok.</p></div>
         {% endif %}
+        </section>
     {% endif %}
 
-    {% if selected_type in ['all', 'fixed'] %}
+    {% if true %}
+        <section data-hive-section="fixed">
         <h2 class="table-section-title">Sabit Kovanlar</h2>
         {% if fixed_hives %}
             <div class="admin-table-wrap">
@@ -98,7 +108,7 @@
                     </thead>
                     <tbody>
                         {% for hive in fixed_hives %}
-                            <tr>
+                            <tr data-hive-row data-hive-type="fixed" data-active="{{ hive.aktif }}" data-search="{{ hive.kovan_no }} {{ hive.arilik_adi }} {{ hive.durum }} {{ hive.son_kontrol_tarihi or '' }} {{ 'aktif' if hive.aktif else 'pasif' }}">
                                 <td><strong>{{ hive.kovan_no }}</strong></td>
                                 <td>{{ hive.arilik_adi }}</td>
                                 <td>{{ hive.durum }}</td>
@@ -121,6 +131,13 @@
                                 <td class="table-actions">
                                     <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline btn-sm">Detay</a>
                                     <a href="{{ url_for('fixed_hive_edit', id=hive.id) }}" class="btn btn-outline btn-sm">Düzenle</a>
+                                    <form method="POST" action="{{ url_for('fixed_hive_delete', id=hive.id) }}" class="danger-delete-form inline-delete-form"
+                                          data-delete-label="{{ hive.arilik_adi }} - {{ hive.kovan_no }}"
+                                          data-delete-warning="Bu sabit kovan ve ona bağlı tüm kontrol kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="confirm_text" value="">
+                                        <button type="submit" class="btn btn-danger btn-sm">Sil</button>
+                                    </form>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -130,6 +147,104 @@
         {% else %}
             <div class="empty-state"><p>Filtreye uyan sabit kovan yok.</p></div>
         {% endif %}
+        </section>
     {% endif %}
+
+    <div class="empty-state live-filter-empty" id="hiveLiveEmpty" hidden>
+        <p>Filtreye uyan kovan yok.</p>
+    </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        var form = document.getElementById('hiveLiveFilter');
+        if (!form) return;
+
+        var searchInput = form.querySelector('input[name="q"]');
+        var typeSelect = form.querySelector('select[name="tip"]');
+        var activeSelect = form.querySelector('select[name="aktif"]');
+        var submitButton = form.querySelector('button[type="submit"]');
+        var rows = Array.prototype.slice.call(document.querySelectorAll('[data-hive-row]'));
+        var sections = Array.prototype.slice.call(document.querySelectorAll('[data-hive-section]'));
+        var visibleCount = document.getElementById('hiveVisibleCount');
+        var emptyState = document.getElementById('hiveLiveEmpty');
+
+        if (submitButton) {
+            submitButton.classList.add('js-only-hidden');
+        }
+
+        function normalize(value) {
+            return String(value || '').toLocaleLowerCase('tr-TR').trim();
+        }
+
+        function rowMatches(row, query, type, active) {
+            var rowType = row.dataset.hiveType;
+            var rowActive = row.dataset.active;
+            var haystack = normalize(row.dataset.search);
+            var terms = normalize(query).split(/\s+/).filter(Boolean);
+
+            if (type !== 'all' && rowType !== type) return false;
+            if (active !== 'all' && rowActive !== active) return false;
+            return terms.every(function (term) {
+                return haystack.indexOf(term) !== -1;
+            });
+        }
+
+        function applyFilters() {
+            var query = searchInput ? searchInput.value : '';
+            var type = typeSelect ? typeSelect.value : 'all';
+            var active = activeSelect ? activeSelect.value : 'all';
+            var counts = { swarm: 0, fixed: 0 };
+            var total = 0;
+            var nextUrl = '/admin/hives?tip=' + encodeURIComponent(type) +
+                '&aktif=' + encodeURIComponent(active) +
+                '&q=' + encodeURIComponent(query);
+
+            rows.forEach(function (row) {
+                var matched = rowMatches(row, query, type, active);
+                row.hidden = !matched;
+                if (matched) {
+                    counts[row.dataset.hiveType] = (counts[row.dataset.hiveType] || 0) + 1;
+                    total += 1;
+                }
+            });
+
+            sections.forEach(function (section) {
+                var sectionType = section.dataset.hiveSection;
+                section.hidden = (counts[sectionType] || 0) === 0;
+            });
+
+            if (visibleCount) {
+                visibleCount.textContent = total;
+            }
+            if (emptyState) {
+                emptyState.hidden = total !== 0;
+            }
+
+            document.querySelectorAll('input[name="next"]').forEach(function (input) {
+                input.value = nextUrl;
+            });
+        }
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            applyFilters();
+        });
+        ['input', 'search'].forEach(function (eventName) {
+            if (searchInput) {
+                searchInput.addEventListener(eventName, applyFilters);
+            }
+        });
+        if (typeSelect) {
+            typeSelect.addEventListener('change', applyFilters);
+        }
+        if (activeSelect) {
+            activeSelect.addEventListener('change', applyFilters);
+        }
+
+        applyFilters();
+    }());
+</script>
 {% endblock %}

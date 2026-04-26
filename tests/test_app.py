@@ -222,6 +222,74 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(swarm['son_kontrol_tarihi'], '2026-04-26')
         self.assertEqual(swarm['aktif'], 0)
 
+    def test_delete_routes_require_confirmation_and_cascade(self):
+        token = self.login()
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi) VALUES (?)',
+            ('Silinecek Arilik',)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, sira_no, konum_no, durum)
+               VALUES (?, ?, ?, ?, ?)''',
+            (apiary_id, 'S1', 1, 1, 'Orta')
+        )
+        app_module.execute_db(
+            '''INSERT INTO inspections
+               (kovan_id, kontrol_tarihi, ari_yogunlugu)
+               VALUES (?, ?, ?)''',
+            (fixed_id, '2026-04-26', 'Orta')
+        )
+        swarm_id = app_module.execute_db(
+            '''INSERT INTO swarm_hives (ad, durum)
+               VALUES (?, ?)''',
+            ('Silinecek Ogul', 'Boş')
+        )
+
+        response = self.client.post(f'/swarm-hives/{swarm_id}/delete', data={
+            'csrf_token': token,
+            'confirm_text': 'yanlis',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.count_rows('swarm_hives'), 1)
+
+        response = self.client.post(f'/swarm-hives/{swarm_id}/delete', data={
+            'csrf_token': token,
+            'confirm_text': 'SIL',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.count_rows('swarm_hives'), 0)
+
+        response = self.client.post(f'/fixed-hives/{fixed_id}/delete', data={
+            'csrf_token': token,
+            'confirm_text': 'SIL',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.count_rows('fixed_hives'), 0)
+        self.assertEqual(self.count_rows('inspections'), 0)
+
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, sira_no, konum_no, durum)
+               VALUES (?, ?, ?, ?, ?)''',
+            (apiary_id, 'S2', 1, 1, 'Orta')
+        )
+        app_module.execute_db(
+            '''INSERT INTO inspections
+               (kovan_id, kontrol_tarihi, ari_yogunlugu)
+               VALUES (?, ?, ?)''',
+            (fixed_id, '2026-04-26', 'Orta')
+        )
+
+        response = self.client.post(f'/apiaries/{apiary_id}/delete', data={
+            'csrf_token': token,
+            'confirm_text': 'SIL',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.count_rows('apiaries'), 0)
+        self.assertEqual(self.count_rows('fixed_hives'), 0)
+        self.assertEqual(self.count_rows('inspections'), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

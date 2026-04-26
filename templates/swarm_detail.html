@@ -89,5 +89,19 @@
             <a href="{{ url_for('swarm_edit', id=hive.id) }}" class="btn btn-outline">✏️ Düzenle</a>
         </div>
     {% endif %}
+
+    <div class="danger-zone mt-3">
+        <div>
+            <strong>Oğul kovanını sil</strong>
+            <p>Bu kayıt kalıcı olarak silinir. İşlem geri alınamaz.</p>
+        </div>
+        <form method="POST" action="{{ url_for('swarm_delete', id=hive.id) }}" class="danger-delete-form"
+              data-delete-label="{{ hive.ad }}"
+              data-delete-warning="Bu oğul kovanı kaydı kalıcı olarak silinir. Bu işlem geri alınamaz.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_text" value="">
+            <button type="submit" class="btn btn-danger">Sil</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

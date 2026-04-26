@@ -294,6 +294,12 @@ def redirect_to_next(default_endpoint, **values):
     return redirect(url_for(default_endpoint, **values))
 
 
+def delete_confirmation_valid():
+    """Silme islemlerinde kullanicinin SIL onayini yazdigini kontrol eder."""
+    confirmation = request.form.get('confirm_text', '').strip().upper()
+    return confirmation in {'SIL', 'SİL'}
+
+
 def fixed_hive_conflict(apiary_id, kovan_no, sira_no, konum_no, exclude_id=None):
     """Ayni arilik icinde kovan no veya kroki konumu cakismasini bulur."""
     params = [apiary_id, kovan_no]
@@ -1029,42 +1035,16 @@ def admin_hives():
     if active_filter not in {'all', '0', '1'}:
         active_filter = 'all'
 
-    fixed_conditions = []
-    fixed_params = []
-    swarm_conditions = []
-    swarm_params = []
-
-    if active_filter in {'0', '1'}:
-        fixed_conditions.append('fh.aktif = ?')
-        fixed_params.append(int(active_filter))
-        swarm_conditions.append('aktif = ?')
-        swarm_params.append(int(active_filter))
-    if query:
-        like = f"%{query.lower()}%"
-        fixed_conditions.append('(lower(fh.kovan_no) LIKE ? OR lower(a.arilik_adi) LIKE ? OR lower(fh.durum) LIKE ?)')
-        fixed_params.extend([like, like, like])
-        swarm_conditions.append('(lower(ad) LIKE ? OR lower(durum) LIKE ?)')
-        swarm_params.extend([like, like])
-
-    fixed_where = f"WHERE {' AND '.join(fixed_conditions)}" if fixed_conditions else ''
-    swarm_where = f"WHERE {' AND '.join(swarm_conditions)}" if swarm_conditions else ''
-
-    fixed_hives = []
-    swarm_hives = []
-    if hive_type in {'all', 'fixed'}:
-        fixed_hives = query_db(f'''
-            SELECT fh.*, a.arilik_adi
-            FROM fixed_hives fh
-            JOIN apiaries a ON fh.arilik_id = a.id
-            {fixed_where}
-            ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no
-        ''', fixed_params)
-    if hive_type in {'all', 'swarm'}:
-        swarm_hives = query_db(f'''
-            SELECT * FROM swarm_hives
-            {swarm_where}
-            ORDER BY aktif DESC, son_kontrol_tarihi DESC, ad
-        ''', swarm_params)
+    fixed_hives = query_db('''
+        SELECT fh.*, a.arilik_adi
+        FROM fixed_hives fh
+        JOIN apiaries a ON fh.arilik_id = a.id
+        ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no
+    ''')
+    swarm_hives = query_db('''
+        SELECT * FROM swarm_hives
+        ORDER BY aktif DESC, son_kontrol_tarihi DESC, ad
+    ''')
 
     return render_template(
         'admin_hives.html',
@@ -1117,6 +1097,74 @@ def admin_fixed_quick_update(id):
         ''', (durum, son_kontrol_tarihi or None, aktif, id))
         flash('Sabit kovan güncellendi.', 'success')
     return redirect_to_next('admin_hives')
+
+
+@app.route('/swarm-hives/<int:id>/delete', methods=['POST'])
+def swarm_delete(id):
+    """Ogul kovani kaydini siler."""
+    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    if not hive:
+        flash('Oğul kovanı bulunamadı.', 'error')
+        return redirect(url_for('swarm_list'))
+    if not delete_confirmation_valid():
+        flash('Silme onayı geçersiz. Silmek için uyarıda SIL yazmanız gerekir.', 'error')
+        return redirect(url_for('swarm_detail', id=id))
+
+    execute_db('DELETE FROM swarm_hives WHERE id = ?', (id,))
+    flash(f"{hive['ad']} silindi.", 'success')
+    return redirect(url_for('swarm_list'))
+
+
+@app.route('/fixed-hives/<int:id>/delete', methods=['POST'])
+def fixed_hive_delete(id):
+    """Sabit kovani ve bagli kontrol kayitlarini siler."""
+    hive = query_db('''
+        SELECT fh.*, a.arilik_adi
+        FROM fixed_hives fh
+        JOIN apiaries a ON fh.arilik_id = a.id
+        WHERE fh.id = ?
+    ''', (id,), one=True)
+    if not hive:
+        flash('Sabit kovan bulunamadı.', 'error')
+        return redirect(url_for('apiary_list'))
+    if not delete_confirmation_valid():
+        flash('Silme onayı geçersiz. Silmek için uyarıda SIL yazmanız gerekir.', 'error')
+        return redirect(url_for('fixed_hive_detail', id=id))
+
+    apiary_id = hive['arilik_id']
+    execute_db('DELETE FROM fixed_hives WHERE id = ?', (id,))
+    flash(f"{hive['kovan_no']} silindi. Bağlı kontrol kayıtları da silindi.", 'success')
+    return redirect(url_for('apiary_detail', id=apiary_id))
+
+
+@app.route('/apiaries/<int:id>/delete', methods=['POST'])
+def apiary_delete(id):
+    """Ariligi ve bagli sabit kovan/kontrol kayitlarini siler."""
+    apiary = query_db('SELECT * FROM apiaries WHERE id = ?', (id,), one=True)
+    if not apiary:
+        flash('Arılık bulunamadı.', 'error')
+        return redirect(url_for('apiary_list'))
+    if not delete_confirmation_valid():
+        flash('Silme onayı geçersiz. Silmek için uyarıda SIL yazmanız gerekir.', 'error')
+        return redirect(url_for('apiary_detail', id=id))
+
+    stats = query_db('''
+        SELECT
+            COUNT(DISTINCT fh.id) as hive_count,
+            COUNT(i.id) as inspection_count
+        FROM fixed_hives fh
+        LEFT JOIN inspections i ON i.kovan_id = fh.id
+        WHERE fh.arilik_id = ?
+    ''', (id,), one=True)
+    execute_db('DELETE FROM apiaries WHERE id = ?', (id,))
+    hive_count = stats['hive_count'] if stats else 0
+    inspection_count = stats['inspection_count'] if stats else 0
+    flash(
+        f"{apiary['arilik_adi']} silindi. {hive_count} sabit kovan ve "
+        f"{inspection_count} kontrol kaydı da silindi.",
+        'success'
+    )
+    return redirect(url_for('apiary_list'))
 
 
 # ---------------------------------------------------------------------------

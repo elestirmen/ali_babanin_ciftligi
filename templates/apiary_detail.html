@@ -112,5 +112,19 @@
             <a href="{{ url_for('fixed_hive_new', apiary_id=apiary.id) }}" class="btn btn-accent">+ Kovan Ekle</a>
         </div>
     {% endif %}
+
+    <div class="danger-zone mt-3">
+        <div>
+            <strong>Arılığı sil</strong>
+            <p>Bu arılık, bağlı tüm sabit kovanlar ve onların kontrol kayıtları kalıcı olarak silinir. İşlem geri alınamaz.</p>
+        </div>
+        <form method="POST" action="{{ url_for('apiary_delete', id=apiary.id) }}" class="danger-delete-form"
+              data-delete-label="{{ apiary.arilik_adi }}"
+              data-delete-warning="Bu arılık, bağlı tüm sabit kovanlar ve onların kontrol kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_text" value="">
+            <button type="submit" class="btn btn-danger">Sil</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

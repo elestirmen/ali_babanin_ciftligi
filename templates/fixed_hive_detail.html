@@ -135,5 +135,19 @@
             </div>
         </div>
     {% endif %}
+
+    <div class="danger-zone mt-3">
+        <div>
+            <strong>Sabit kovanı sil</strong>
+            <p>Bu kovan ve ona bağlı tüm kontrol kayıtları kalıcı olarak silinir. İşlem geri alınamaz.</p>
+        </div>
+        <form method="POST" action="{{ url_for('fixed_hive_delete', id=hive.id) }}" class="danger-delete-form"
+              data-delete-label="{{ hive.arilik_adi }} - {{ hive.kovan_no }}"
+              data-delete-warning="Bu sabit kovan ve ona bağlı tüm kontrol kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_text" value="">
+            <button type="submit" class="btn btn-danger">Sil</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

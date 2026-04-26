@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Dışa Aktarma - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container admin-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Dışa Aktarma</h1>
+            <div class="subtitle">Kovan ve kontrol kayıtlarını CSV veya Excel olarak indirin.</div>
+        </div>
+        <a href="{{ url_for('admin_export_all_xlsx') }}" class="btn btn-accent">Tüm Veriler Excel</a>
+    </div>
+
+    <div class="admin-table-wrap export-table-wrap">
+        <table class="admin-table export-table">
+            <thead>
+                <tr>
+                    <th>Veri seti</th>
+                    <th>İçerik</th>
+                    <th>Kayıt</th>
+                    <th>CSV</th>
+                    <th>Excel</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dataset in datasets %}
+                    <tr>
+                        <td><strong>{{ dataset.title }}</strong></td>
+                        <td>{{ dataset.description }}</td>
+                        <td>{{ dataset.count }}</td>
+                        <td>
+                            <a href="{{ url_for(dataset.csv_endpoint) }}" class="btn btn-outline btn-sm">CSV indir</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for(dataset.xlsx_endpoint) }}" class="btn btn-primary btn-sm">Excel indir</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                <tr>
+                    <td><strong>Tüm Veriler</strong></td>
+                    <td>Oğul kovanları, arılıklar, sabit kovanlar, kontrol kayıtları ve arılık özeti ayrı sayfalarda.</td>
+                    <td>5 sayfa</td>
+                    <td><span class="text-muted">-</span></td>
+                    <td>
+                        <a href="{{ url_for('admin_export_all_xlsx') }}" class="btn btn-accent btn-sm">Excel indir</a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

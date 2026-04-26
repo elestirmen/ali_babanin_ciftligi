@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Yedekleme - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container admin-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Yedekleme</h1>
+            <div class="subtitle">Veritabanı, özel yüklemeler, QR kodlar ve public görseller için zip yedeği alın.</div>
+        </div>
+        <form method="POST" action="{{ url_for('admin_backup_create') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-accent">Yeni Yedek Al</button>
+        </form>
+    </div>
+
+    {% if backups %}
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Dosya</th>
+                        <th>Boyut</th>
+                        <th>Oluşturma</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for backup in backups %}
+                        <tr>
+                            <td><strong>{{ backup.filename }}</strong></td>
+                            <td>{{ backup.size_label }}</td>
+                            <td>{{ backup.created_at }}</td>
+                            <td class="table-actions">
+                                <a href="{{ url_for('admin_backup_download', filename=backup.filename) }}" class="btn btn-outline btn-sm">İndir</a>
+                                <form method="POST" action="{{ url_for('admin_backup_delete', filename=backup.filename) }}" class="inline-delete-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Sil</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <h3>Henüz yedek yok</h3>
+            <p>İlk zip yedeğini oluşturmak için Yeni Yedek Al düğmesini kullanın.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

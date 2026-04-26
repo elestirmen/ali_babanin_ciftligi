@@ -1937,6 +1937,26 @@ textarea.form-control {
     white-space: nowrap;
 }
 
+.export-table {
+    min-width: 820px;
+}
+
+.export-table td:nth-child(2) {
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.export-table td:nth-child(3),
+.export-table th:nth-child(3) {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.export-table td:nth-child(4),
+.export-table td:nth-child(5) {
+    white-space: nowrap;
+}
+
 .inline-delete-form {
     margin: 0;
 }

@@ -30,12 +30,13 @@ Public bilgi sayfaları, ziyaretçi mesajları ve yönetim paneli **tek kod taba
 | 3 | [Hızlı başlangıç](#hızlı-başlangıç-geliştirme) |
 | 4 | [Ortam değişkenleri](#ortam-değişkenleri) |
 | 5 | [Docker ve NPM](#docker-ve-ters-vekil-npm) |
-| 6 | [URL özeti](#url-özeti-public--korumalı) |
-| 7 | [Test](#test) |
-| 8 | [Teknolojiler](#teknolojiler-ve-bağımlılıklar) |
-| 9 | [Sınırlamalar ve ipuçları](#bilinen-sınırlamalar-ve-ipuçları) |
-| 10 | [Yol haritası](#gelecek-planlar) |
-| 11 | [Lisans](#lisans) |
+| 6 | [Yedekleme ve dışa aktarma](#yedekleme-ve-dışa-aktarma) |
+| 7 | [URL özeti](#url-özeti-public--korumalı) |
+| 8 | [Test](#test) |
+| 9 | [Teknolojiler](#teknolojiler-ve-bağımlılıklar) |
+| 10 | [Sınırlamalar ve ipuçları](#bilinen-sınırlamalar-ve-ipuçları) |
+| 11 | [Yol haritası](#gelecek-planlar) |
+| 12 | [Lisans](#lisans) |
 
 ---
 
@@ -60,6 +61,7 @@ Public bilgi sayfaları, ziyaretçi mesajları ve yönetim paneli **tek kod taba
 - **Oğul kovanları:** liste, EXIF/tarayıcı GPS, harita, foto, durum
 - **Sabit arılıklar:** grid/kroki, kovan detayı, **QR**, kontrol geçmişi
 - **Harita:** Leaflet, katmanlar, yol tarifi, eski kontrol uyarıları
+- **Yedek / dışa aktarma:** zip yedek, CSV ve Excel indirme
 - **API:** `GET /api/map-data` (oturumlu)
 
 </td>
@@ -150,6 +152,7 @@ python app.py
 | `ALI_BABA_UPLOAD_FOLDER` | Private kovan/kontrol foto | `uploads` veya `/data/uploads` |
 | `ALI_BABA_QR_FOLDER` | Private QR | `qrcodes` veya `/data/qrcodes` |
 | `ALI_BABA_PUBLIC_UPLOAD_FOLDER` | Public günlük/bal görselleri | `public_uploads` veya `/data/public_uploads` |
+| `ALI_BABA_BACKUP_FOLDER` | Zip yedek dosyaları | DB klasörü altında `backups`; Docker’da `/data/backups` |
 | `ALI_BABA_PUBLIC_URL` | Dış domain (opsiyonel) | Son `/` olmadan |
 | `ALI_BABA_PROXY_FIX` | `ProxyFix` (X-Forwarded-*) | Docker’da `1` |
 | `ALI_BABA_REQUIRE_SECURE_PASSWORD` | Zayıf prod parolalarını reddeder | Docker’da `1` |
@@ -200,13 +203,27 @@ Compose; DB, private foto, QR ve public görseller için **named volume** oluşt
 
 ---
 
+## Yedekleme ve dışa aktarma
+
+Admin girişi sonrası:
+
+- **Yedekleme:** `/admin/backups` sayfasından **Yeni Yedek Al** ile `ali_baba_backup_YYYYMMDD_HHMMSS.zip` dosyası oluşturulur. Son 10 yedek saklanır; daha eskiler otomatik silinir.
+- **Yedek içeriği:** SQLite veritabanı, `uploads`, `qrcodes` ve varsa `public_uploads` klasörü.
+- **Yedek konumu:** Lokal çalışmada varsayılan olarak veritabanı klasörü altındaki `backups`; Docker’da `/data/backups`.
+- **Docker volume:** `ali_baba_data` volume’u `/data` altındaki `ali_baba.db` ve `backups` klasörünü tutar. Ayrıca `ali_baba_uploads`, `ali_baba_qrcodes`, `ali_baba_public_uploads` volume’ları medya dosyaları içindir.
+- **Dışa aktarma:** `/admin/export` sayfasından Oğul Kovanları, Sabit Kovanlar, Kontrol Kayıtları ve Arılık Özeti için CSV veya Excel indirilebilir. Excel çıktıları filtrelenebilir/sıralanabilir tablo formatındadır; Google Maps konum sütunları tıklanabilir link olarak gelir. Tüm Veriler Excel (`all.xlsx`) çıktısı aynı dosyada ayrı sayfalar halinde gelir.
+
+Yedek ve dışa aktarma dosyaları konum, kovan ve özel notlar gibi hassas veri içerir; paylaşılmamalı ve güvenli bir yerde saklanmalıdır.
+
+---
+
 ## URL özeti (public / korumalı)
 
 | Alan | Örnek yollar |
 |------|----------------|
 | **Public** | `/`, `/mesaj-birak`, `/gunluk`, `/bal-hikayeleri`, `/bal-hikayeleri/<id>`, `/public-media/<dosya>`, `/offline`, `/manifest.webmanifest`, `/sw.js` |
 | **Giriş** | `/login`, `/logout` |
-| **Panel** | `/admin`, `/admin/messages`, `/admin/content`, `/admin/posts`, `/admin/honey-stories` … |
+| **Panel** | `/admin`, `/admin/messages`, `/admin/content`, `/admin/posts`, `/admin/honey-stories`, `/admin/backups`, `/admin/export` … |
 | **Harita / veri (oturum)** | `/admin/hives` ve ilgili rotalar, `/media/uploads/<dosya>`, `/media/qrcodes/<dosya>`, `GET /api/map-data` |
 
 Tüm rotalar: `app.py` içindeki `@app.route` tanımları.
@@ -225,7 +242,7 @@ python -m unittest discover -s tests
 
 - **Flask** 3.x, **Gunicorn** (üretim)  
 - **SQLite** 3 (stdlib)  
-- **Pillow** (EXIF’ten GPS), **qrcode**  
+- **Pillow** (EXIF’ten GPS), **qrcode**, **openpyxl**
 - **Leaflet** + döşemeler (OSM ve ek katmanlar)  
 
 Sürümler: `requirements.txt`
@@ -244,7 +261,6 @@ Sürümler: `requirements.txt`
 
 - [ ] Kullanıcı yönetimi ve daha ayrıntılı yetkilendirme  
 - [ ] PWA / çevrimdışı deneyimini genişletme  
-- [ ] CSV / Excel dışa aktarma  
 - [ ] Harita karosu: çevrimdışı veya kendi karo sunucusu  
 - [ ] Bildirim veya e‑posta hatırlatma (kontrol tarihleri)  
 

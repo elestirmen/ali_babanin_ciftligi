@@ -17,6 +17,7 @@ services:
       ALI_BABA_UPLOAD_FOLDER: /data/uploads
       ALI_BABA_QR_FOLDER: /data/qrcodes
       ALI_BABA_PUBLIC_UPLOAD_FOLDER: /data/public_uploads
+      ALI_BABA_BACKUP_FOLDER: /data/backups
       ALI_BABA_REQUIRE_SECURE_PASSWORD: "1"
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
     volumes:

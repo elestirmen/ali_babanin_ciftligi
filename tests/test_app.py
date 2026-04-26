@@ -1,12 +1,15 @@
 from io import BytesIO
 import os
+import shutil
 import sqlite3
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from PIL import Image
 from werkzeug.datastructures import FileStorage
+from openpyxl import load_workbook
 
 
 _tmp = tempfile.TemporaryDirectory()
@@ -15,6 +18,7 @@ os.environ['ALI_BABA_DB_PATH'] = str(_base / 'test.db')
 os.environ['ALI_BABA_UPLOAD_FOLDER'] = str(_base / 'uploads')
 os.environ['ALI_BABA_QR_FOLDER'] = str(_base / 'qrcodes')
 os.environ['ALI_BABA_PUBLIC_UPLOAD_FOLDER'] = str(_base / 'public_uploads')
+os.environ['ALI_BABA_BACKUP_FOLDER'] = str(_base / 'backups')
 os.environ['ALI_BABA_SECRET_KEY'] = 'test-secret'
 os.environ['ALI_BABA_PASSWORD'] = 'alibaba'
 
@@ -34,6 +38,10 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         Path(app_module.UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
         Path(app_module.QR_FOLDER).mkdir(parents=True, exist_ok=True)
         Path(app_module.PUBLIC_UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+        backup_path = Path(app_module.BACKUP_FOLDER)
+        if backup_path.exists():
+            shutil.rmtree(backup_path)
+        backup_path.mkdir(parents=True, exist_ok=True)
         init_db.DB_PATH = app_module.DB_PATH
         init_db.create_tables()
         app_module.app.config.update(TESTING=True)
@@ -347,6 +355,209 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(self.count_rows('apiaries'), 0)
         self.assertEqual(self.count_rows('fixed_hives'), 0)
         self.assertEqual(self.count_rows('inspections'), 0)
+
+    def test_admin_backups_require_login(self):
+        response = self.client.get('/admin/backups')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.headers['Location'])
+
+    def test_export_routes_require_login(self):
+        routes = [
+            '/admin/export',
+            '/admin/export/swarm-hives.csv',
+            '/admin/export/swarm-hives.xlsx',
+            '/admin/export/fixed-hives.csv',
+            '/admin/export/fixed-hives.xlsx',
+            '/admin/export/inspections.csv',
+            '/admin/export/inspections.xlsx',
+            '/admin/export/apiary-summary.csv',
+            '/admin/export/apiary-summary.xlsx',
+            '/admin/export/all.xlsx',
+        ]
+        for route in routes:
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn('/login', response.headers['Location'])
+
+    def test_csv_export_routes_return_downloads_after_login(self):
+        self.login()
+        app_module.execute_db(
+            '''INSERT INTO swarm_hives
+               (ad, latitude, longitude, durum, kurulum_tarihi, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            ('Dere Kenarı', 38.63, 34.82, 'Boş', '2026-04-01', '2026-04-20', 1)
+        )
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arılık', 38.64, 34.83)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, durum, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?, ?)''',
+            (apiary_id, 'K1', 'Güçlü', '2026-04-21', 1)
+        )
+        app_module.execute_db(
+            '''INSERT INTO inspections (kovan_id, kontrol_tarihi, ari_yogunlugu, notlar)
+               VALUES (?, ?, ?, ?)''',
+            (fixed_id, '2026-04-22', 'Güçlü', 'Türkçe not')
+        )
+
+        expected = {
+            '/admin/export/swarm-hives.csv': 'ogul_kovanlari_',
+            '/admin/export/fixed-hives.csv': 'sabit_kovanlar_',
+            '/admin/export/inspections.csv': 'kontrol_kayitlari_',
+            '/admin/export/apiary-summary.csv': 'arilik_ozeti_',
+        }
+        for route, prefix in expected.items():
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content_type, 'text/csv; charset=utf-8')
+                disposition = response.headers.get('Content-Disposition', '')
+                self.assertIn('attachment', disposition)
+                self.assertIn(prefix, disposition)
+                self.assertTrue(response.data.startswith(b'\xef\xbb\xbf'))
+
+    def test_export_page_lists_csv_and_excel_downloads_in_table(self):
+        self.login()
+        response = self.client.get('/admin/export')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<table', response.data)
+        self.assertIn(b'/admin/export/swarm-hives.csv', response.data)
+        self.assertIn(b'/admin/export/swarm-hives.xlsx', response.data)
+        self.assertIn(b'/admin/export/all.xlsx', response.data)
+        self.assertIn('Excel indir'.encode('utf-8'), response.data)
+
+    def test_single_sheet_excel_exports_return_downloads_after_login(self):
+        self.login()
+        app_module.execute_db(
+            '''INSERT INTO swarm_hives
+               (ad, latitude, longitude, durum)
+               VALUES (?, ?, ?, ?)''',
+            ('Dere Kenarı', 38.63, 34.82, 'Boş')
+        )
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arılık', 38.64, 34.83)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, durum)
+               VALUES (?, ?, ?)''',
+            (apiary_id, 'K1', 'Güçlü')
+        )
+        app_module.execute_db(
+            '''INSERT INTO inspections (kovan_id, kontrol_tarihi, ari_yogunlugu)
+               VALUES (?, ?, ?)''',
+            (fixed_id, '2026-04-22', 'Güçlü')
+        )
+
+        expected = {
+            '/admin/export/swarm-hives.xlsx': ('ogul_kovanlari_', 'Oğul Kovanları'),
+            '/admin/export/fixed-hives.xlsx': ('sabit_kovanlar_', 'Sabit Kovanlar'),
+            '/admin/export/inspections.xlsx': ('kontrol_kayitlari_', 'Kontrol Kayıtları'),
+            '/admin/export/apiary-summary.xlsx': ('arilik_ozeti_', 'Arılık Özeti'),
+        }
+        for route, (prefix, sheet_name) in expected.items():
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.mimetype,
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                disposition = response.headers.get('Content-Disposition', '')
+                self.assertIn('attachment', disposition)
+                self.assertIn(prefix, disposition)
+                workbook = load_workbook(BytesIO(response.data))
+                self.assertEqual(workbook.sheetnames, [sheet_name])
+                sheet = workbook[sheet_name]
+                self.assertGreater(len(sheet.tables), 0)
+                if sheet_name in {'Oğul Kovanları', 'Sabit Kovanlar', 'Arılık Özeti'}:
+                    headers = [cell.value for cell in sheet[1]]
+                    maps_col = headers.index('Google Maps yol tarifi linki') + 1
+                    self.assertIsNotNone(sheet.cell(row=2, column=maps_col).hyperlink)
+
+    def test_excel_export_returns_expected_workbook_after_login(self):
+        self.login()
+        app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arılık', 38.64, 34.83)
+        )
+
+        response = self.client.get('/admin/export/all.xlsx')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.mimetype,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        disposition = response.headers.get('Content-Disposition', '')
+        self.assertIn('attachment', disposition)
+        self.assertIn('ali_baba_tum_veriler_', disposition)
+
+        workbook = load_workbook(BytesIO(response.data))
+        self.assertEqual(workbook.sheetnames, [
+            'Oğul Kovanları',
+            'Arılıklar',
+            'Sabit Kovanlar',
+            'Kontrol Kayıtları',
+            'Arılık Özeti',
+        ])
+        for sheet in workbook.worksheets:
+            self.assertGreater(len(sheet.tables), 0)
+
+        apiary_sheet = workbook['Arılıklar']
+        headers = [cell.value for cell in apiary_sheet[1]]
+        maps_col = headers.index('Google Maps yol tarifi linki') + 1
+        self.assertIsNotNone(apiary_sheet.cell(row=2, column=maps_col).hyperlink)
+
+    def test_backup_create_adds_zip_with_database(self):
+        token = self.login()
+        app_module.execute_db(
+            '''INSERT INTO swarm_hives (ad, durum)
+               VALUES (?, ?)''',
+            ('Yedek Kovanı', 'Boş')
+        )
+
+        response = self.client.post('/admin/backups/create', data={'csrf_token': token})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/admin/backups')
+
+        backups = list(Path(app_module.BACKUP_FOLDER).glob('ali_baba_backup_*.zip'))
+        self.assertEqual(len(backups), 1)
+        with zipfile.ZipFile(backups[0]) as archive:
+            self.assertIn(Path(app_module.DB_PATH).name, archive.namelist())
+
+    def test_backup_download_and_delete(self):
+        token = self.login()
+        self.client.post('/admin/backups/create', data={'csrf_token': token})
+        backup = next(Path(app_module.BACKUP_FOLDER).glob('ali_baba_backup_*.zip'))
+
+        response = self.client.get(f'/admin/backups/{backup.name}/download')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response.headers.get('Content-Disposition', ''))
+
+        response = self.client.post(f'/admin/backups/{backup.name}/delete', data={'csrf_token': token})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(backup.exists())
+
+    def test_backup_create_survives_missing_data_folders(self):
+        token = self.login()
+        for folder in [
+            app_module.UPLOAD_FOLDER,
+            app_module.QR_FOLDER,
+            app_module.PUBLIC_UPLOAD_FOLDER,
+        ]:
+            shutil.rmtree(folder, ignore_errors=True)
+
+        response = self.client.post('/admin/backups/create', data={'csrf_token': token})
+        self.assertEqual(response.status_code, 302)
+        backups = list(Path(app_module.BACKUP_FOLDER).glob('ali_baba_backup_*.zip'))
+        self.assertEqual(len(backups), 1)
+        with zipfile.ZipFile(backups[0]) as archive:
+            self.assertIn(Path(app_module.DB_PATH).name, archive.namelist())
 
 
 if __name__ == '__main__':

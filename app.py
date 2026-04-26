@@ -4,17 +4,27 @@ Ogul kovanlari ve sabit arilik takip sistemi.
 """
 
 import os
+import csv
+import io
+import re
 import secrets
 import sqlite3
+import tempfile
 import uuid
+import zipfile
 from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, jsonify, session, abort, send_from_directory)
+                   flash, jsonify, session, abort, send_from_directory,
+                   Response, send_file)
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 import qrcode
 
 # ---------------------------------------------------------------------------
@@ -32,6 +42,8 @@ QR_FOLDER = os.environ.get('ALI_BABA_QR_FOLDER',
                            os.path.join(BASE_DIR, 'qrcodes'))
 PUBLIC_UPLOAD_FOLDER = os.environ.get('ALI_BABA_PUBLIC_UPLOAD_FOLDER',
                                       os.path.join(BASE_DIR, 'public_uploads'))
+BACKUP_FOLDER = os.environ.get('ALI_BABA_BACKUP_FOLDER',
+                               os.path.join(os.path.dirname(DB_PATH), 'backups'))
 PUBLIC_URL = os.environ.get('ALI_BABA_PUBLIC_URL', '').rstrip('/')
 APP_PASSWORD = os.environ.get('ALI_BABA_PASSWORD', 'alibaba')
 if os.environ.get('ALI_BABA_REQUIRE_SECURE_PASSWORD', '0') == '1':
@@ -61,12 +73,14 @@ app.secret_key = os.environ.get('ALI_BABA_SECRET_KEY') or secrets.token_hex(32)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['QR_FOLDER'] = QR_FOLDER
 app.config['PUBLIC_UPLOAD_FOLDER'] = PUBLIC_UPLOAD_FOLDER
+app.config['BACKUP_FOLDER'] = BACKUP_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 # Klasorleri olustur
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(QR_FOLDER, exist_ok=True)
 os.makedirs(PUBLIC_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Durum secenekleri
@@ -227,6 +241,471 @@ def execute_db(query, args=()):
     lastrowid = cursor.lastrowid
     conn.close()
     return lastrowid
+
+
+# ---------------------------------------------------------------------------
+# Yardimci fonksiyonlar: Yedekleme ve disa aktarma
+# ---------------------------------------------------------------------------
+
+BACKUP_FILENAME_RE = re.compile(r'^ali_baba_backup_\d{8}_\d{6}\.zip$')
+
+
+def google_maps_directions_url(lat, lng):
+    """Koordinat varsa Google Maps yol tarifi URL'i dondurur."""
+    if lat is None or lng is None:
+        return ''
+    return f'https://www.google.com/maps/dir/?api=1&destination={lat},{lng}'
+
+
+def yes_no(value):
+    """Boolean/int alanlari arayuz ve raporlar icin okunur metne cevirir."""
+    return 'Evet' if int(value or 0) == 1 else 'Hayır'
+
+
+def export_date_suffix():
+    return datetime.now().strftime('%Y%m%d')
+
+
+def backup_timestamp():
+    return datetime.now().strftime('%Y%m%d_%H%M%S')
+
+
+def backup_path_for(filename):
+    if not BACKUP_FILENAME_RE.match(filename or ''):
+        return None
+    return os.path.join(BACKUP_FOLDER, filename)
+
+
+def list_backup_files():
+    """Yedek klasorundeki zip dosyalarini yeni tarihten eskiye listeler."""
+    if not os.path.isdir(BACKUP_FOLDER):
+        return []
+
+    backups = []
+    for filename in os.listdir(BACKUP_FOLDER):
+        if not BACKUP_FILENAME_RE.match(filename):
+            continue
+        path = os.path.join(BACKUP_FOLDER, filename)
+        if not os.path.isfile(path):
+            continue
+        stat = os.stat(path)
+        backups.append({
+            'filename': filename,
+            'size': stat.st_size,
+            'size_label': format_file_size(stat.st_size),
+            'created_at': datetime.fromtimestamp(stat.st_mtime).strftime('%d.%m.%Y %H:%M'),
+            'mtime': stat.st_mtime,
+        })
+    return sorted(backups, key=lambda item: item['mtime'], reverse=True)
+
+
+def format_file_size(size):
+    if size < 1024:
+        return f'{size} B'
+    if size < 1024 * 1024:
+        return f'{size / 1024:.1f} KB'
+    return f'{size / (1024 * 1024):.1f} MB'
+
+
+def add_sqlite_database_to_zip(zip_file):
+    """SQLite DB'yi tutarli bir anlik kopya olarak zip'e ekler."""
+    if not os.path.exists(DB_PATH):
+        return False
+
+    fd, temp_path = tempfile.mkstemp(prefix='ali_baba_db_', suffix='.db')
+    os.close(fd)
+    try:
+        source = sqlite3.connect(DB_PATH)
+        try:
+            target = sqlite3.connect(temp_path)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
+        finally:
+            source.close()
+        zip_file.write(temp_path, os.path.basename(DB_PATH))
+        return True
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+def add_folder_to_zip(zip_file, folder_path, archive_root):
+    """Var olan klasoru zip'e ekler; eksik klasorler sessizce atlanir."""
+    if not os.path.isdir(folder_path):
+        return 0
+
+    added = 0
+    for root, _dirs, files in os.walk(folder_path):
+        for filename in files:
+            source = os.path.join(root, filename)
+            if os.path.islink(source):
+                continue
+            relative = os.path.relpath(source, folder_path)
+            zip_file.write(source, os.path.join(archive_root, relative))
+            added += 1
+    return added
+
+
+def cleanup_old_backups(keep=10):
+    for backup in list_backup_files()[keep:]:
+        path = backup_path_for(backup['filename'])
+        if path and os.path.exists(path):
+            os.remove(path)
+
+
+def create_backup_zip():
+    """DB ve veri klasorlerinden zip yedegi olusturur."""
+    os.makedirs(BACKUP_FOLDER, exist_ok=True)
+    filename = f'ali_baba_backup_{backup_timestamp()}.zip'
+    path = os.path.join(BACKUP_FOLDER, filename)
+    included = []
+
+    with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+        if add_sqlite_database_to_zip(zip_file):
+            included.append(os.path.basename(DB_PATH))
+
+        folder_specs = [
+            (UPLOAD_FOLDER, 'uploads'),
+            (QR_FOLDER, 'qrcodes'),
+            (PUBLIC_UPLOAD_FOLDER, 'public_uploads'),
+        ]
+        for folder_path, archive_root in folder_specs:
+            count = add_folder_to_zip(zip_file, folder_path, archive_root)
+            if count:
+                included.append(archive_root)
+
+    if not included:
+        os.remove(path)
+        raise RuntimeError('Yedeklenecek veritabanı veya dosya klasörü bulunamadı.')
+
+    cleanup_old_backups()
+    return filename
+
+
+def csv_download_response(filename, headers, rows):
+    output = io.StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    data = output.getvalue().encode('utf-8-sig')
+    response = Response(data, content_type='text/csv; charset=utf-8')
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+def swarm_export_data():
+    headers = [
+        'ID', 'Kovan adı', 'Durum', 'Latitude', 'Longitude', 'Kurulum tarihi',
+        'Son kontrol tarihi', 'Aktif', 'Ulaşım notu', 'Genel not',
+        'Google Maps yol tarifi linki'
+    ]
+    rows = []
+    for hive in query_db('SELECT * FROM swarm_hives ORDER BY id'):
+        rows.append([
+            hive['id'],
+            hive['ad'],
+            hive['durum'],
+            hive['latitude'],
+            hive['longitude'],
+            hive['kurulum_tarihi'],
+            hive['son_kontrol_tarihi'],
+            yes_no(hive['aktif']),
+            hive['ulasim_notu'],
+            hive['genel_not'],
+            google_maps_directions_url(hive['latitude'], hive['longitude']),
+        ])
+    return headers, rows
+
+
+def fixed_hive_export_data():
+    headers = [
+        'ID', 'Arılık adı', 'Kovan no', 'Sıra no', 'Konum no', 'Ana arı yılı',
+        'Kat sayısı', 'Çerçeve sayısı', 'Durum', 'Son kontrol tarihi',
+        'Aktif', 'Genel not', 'Google Maps yol tarifi linki'
+    ]
+    rows = []
+    hives = query_db('''
+        SELECT fh.*, a.arilik_adi, a.latitude, a.longitude
+        FROM fixed_hives fh
+        JOIN apiaries a ON a.id = fh.arilik_id
+        ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no, fh.id
+    ''')
+    for hive in hives:
+        rows.append([
+            hive['id'],
+            hive['arilik_adi'],
+            hive['kovan_no'],
+            hive['sira_no'],
+            hive['konum_no'],
+            hive['ana_ari_yili'],
+            hive['kat_sayisi'],
+            hive['cerceve_sayisi'],
+            hive['durum'],
+            hive['son_kontrol_tarihi'],
+            yes_no(hive['aktif']),
+            hive['genel_not'],
+            google_maps_directions_url(hive['latitude'], hive['longitude']),
+        ])
+    return headers, rows
+
+
+def inspection_export_data():
+    headers = [
+        'ID', 'Arılık adı', 'Kovan no', 'Kontrol tarihi', 'Arı yoğunluğu',
+        'Yavru durumu', 'Bal durumu', 'Polen gelişi', 'Ana arı görüldü mü',
+        'Yumurta var mı', 'Hastalık belirtisi', 'Saldırganlık',
+        'Besleme yapıldı mı', 'İlaçlama yapıldı mı', 'Notlar'
+    ]
+    rows = []
+    inspections = query_db('''
+        SELECT i.*, fh.kovan_no, a.arilik_adi
+        FROM inspections i
+        JOIN fixed_hives fh ON fh.id = i.kovan_id
+        JOIN apiaries a ON a.id = fh.arilik_id
+        ORDER BY i.kontrol_tarihi DESC, i.id DESC
+    ''')
+    for inspection in inspections:
+        rows.append([
+            inspection['id'],
+            inspection['arilik_adi'],
+            inspection['kovan_no'],
+            inspection['kontrol_tarihi'],
+            inspection['ari_yogunlugu'],
+            inspection['yavru_durumu'],
+            inspection['bal_durumu'],
+            inspection['polen_gelisi'],
+            inspection['ana_ari_goruldu'],
+            inspection['yumurta_var'],
+            inspection['hastalik_belirtisi'],
+            inspection['saldirganlik'],
+            inspection['besleme_yapildi'],
+            inspection['ilaclama_yapildi'],
+            inspection['notlar'],
+        ])
+    return headers, rows
+
+
+def apiary_export_data():
+    headers = [
+        'ID', 'Arılık adı', 'Latitude', 'Longitude', 'Açıklama',
+        'Oluşturma tarihi', 'Güncelleme tarihi'
+    ]
+    rows = []
+    for apiary in query_db('SELECT * FROM apiaries ORDER BY arilik_adi, id'):
+        rows.append([
+            apiary['id'],
+            apiary['arilik_adi'],
+            apiary['latitude'],
+            apiary['longitude'],
+            apiary['aciklama'],
+            apiary['olusturma_tarihi'],
+            apiary['guncelleme_tarihi'],
+        ])
+    return headers, rows
+
+
+def apiary_summary_export_data():
+    headers = [
+        'Arılık ID', 'Arılık adı', 'Latitude', 'Longitude',
+        'Toplam kovan sayısı', 'Aktif kovan sayısı', 'Pasif kovan sayısı',
+        'Güçlü kovan sayısı', 'Orta kovan sayısı', 'Zayıf kovan sayısı',
+        'Kontrol gerekli kovan sayısı', 'Hastalık şüphesi olan kovan sayısı',
+        'En eski son kontrol tarihi'
+    ]
+    rows = []
+    summaries = query_db('''
+        SELECT
+            a.id,
+            a.arilik_adi,
+            a.latitude,
+            a.longitude,
+            COUNT(fh.id) as toplam_kovan_sayisi,
+            SUM(CASE WHEN fh.aktif = 1 THEN 1 ELSE 0 END) as aktif_kovan_sayisi,
+            SUM(CASE WHEN fh.aktif = 0 THEN 1 ELSE 0 END) as pasif_kovan_sayisi,
+            SUM(CASE WHEN fh.durum = 'Güçlü' THEN 1 ELSE 0 END) as guclu_kovan_sayisi,
+            SUM(CASE WHEN fh.durum = 'Orta' THEN 1 ELSE 0 END) as orta_kovan_sayisi,
+            SUM(CASE WHEN fh.durum = 'Zayıf' THEN 1 ELSE 0 END) as zayif_kovan_sayisi,
+            SUM(CASE WHEN fh.durum = 'Kontrol gerekli' THEN 1 ELSE 0 END) as kontrol_gerekli_kovan_sayisi,
+            SUM(CASE WHEN fh.durum = 'Hastalık şüphesi var' THEN 1 ELSE 0 END) as hastalik_supheli_kovan_sayisi,
+            MIN(fh.son_kontrol_tarihi) as en_eski_son_kontrol_tarihi
+        FROM apiaries a
+        LEFT JOIN fixed_hives fh ON fh.arilik_id = a.id
+        GROUP BY a.id
+        ORDER BY a.arilik_adi, a.id
+    ''')
+    for summary in summaries:
+        rows.append([
+            summary['id'],
+            summary['arilik_adi'],
+            summary['latitude'],
+            summary['longitude'],
+            summary['toplam_kovan_sayisi'] or 0,
+            summary['aktif_kovan_sayisi'] or 0,
+            summary['pasif_kovan_sayisi'] or 0,
+            summary['guclu_kovan_sayisi'] or 0,
+            summary['orta_kovan_sayisi'] or 0,
+            summary['zayif_kovan_sayisi'] or 0,
+            summary['kontrol_gerekli_kovan_sayisi'] or 0,
+            summary['hastalik_supheli_kovan_sayisi'] or 0,
+            summary['en_eski_son_kontrol_tarihi'],
+        ])
+    return headers, rows
+
+
+def add_maps_link_column(headers, rows):
+    """Latitude/Longitude kolonlari olan Excel sayfalarina link kolonu ekler."""
+    if 'Latitude' not in headers or 'Longitude' not in headers:
+        return headers, rows
+
+    lat_index = headers.index('Latitude')
+    lng_index = headers.index('Longitude')
+    extended_headers = list(headers) + ['Google Maps yol tarifi linki']
+    extended_rows = []
+    for row in rows:
+        lat = row[lat_index]
+        lng = row[lng_index]
+        extended_rows.append(list(row) + [google_maps_directions_url(lat, lng)])
+    return extended_headers, extended_rows
+
+
+def apiary_excel_data():
+    return add_maps_link_column(*apiary_export_data())
+
+
+def apiary_summary_excel_data():
+    return add_maps_link_column(*apiary_summary_export_data())
+
+
+def style_google_maps_links(sheet, headers):
+    """Google Maps URL hucrelerini Excel hyperlink olarak isaretler."""
+    for column_index, header in enumerate(headers, start=1):
+        if header != 'Google Maps yol tarifi linki':
+            continue
+        for row_index in range(2, sheet.max_row + 1):
+            cell = sheet.cell(row=row_index, column=column_index)
+            if cell.value:
+                cell.hyperlink = str(cell.value)
+                cell.style = 'Hyperlink'
+
+
+def add_excel_table(sheet, table_name, headers):
+    """Sheet araligini filtrelenebilir/siralanabilir Excel tablosuna cevirir."""
+    if not headers:
+        return
+    last_column = get_column_letter(len(headers))
+    ref = f'A1:{last_column}{sheet.max_row}'
+    table = Table(displayName=table_name, ref=ref)
+    table.tableStyleInfo = TableStyleInfo(
+        name='TableStyleMedium2',
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False,
+    )
+    sheet.add_table(table)
+
+
+def populate_excel_sheet(sheet, headers, rows, table_name):
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    for row in rows:
+        sheet.append(['' if value is None else value for value in row])
+    style_google_maps_links(sheet, headers)
+    add_excel_table(sheet, table_name, headers)
+
+    for column in sheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            max_length = max(max_length, len(str(cell.value or '')))
+        sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 48)
+    sheet.freeze_panes = 'A2'
+
+
+def add_excel_sheet(workbook, title, headers, rows, table_name):
+    sheet = workbook.create_sheet(title)
+    populate_excel_sheet(sheet, headers, rows, table_name)
+
+
+def excel_download_response():
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for index, (title, data_func) in enumerate([
+        ('Oğul Kovanları', swarm_export_data),
+        ('Arılıklar', apiary_excel_data),
+        ('Sabit Kovanlar', fixed_hive_export_data),
+        ('Kontrol Kayıtları', inspection_export_data),
+        ('Arılık Özeti', apiary_summary_excel_data),
+    ], start=1):
+        headers, rows = data_func()
+        add_excel_sheet(workbook, title, headers, rows, f'ExportTable{index}')
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = f'ali_baba_tum_veriler_{export_date_suffix()}.xlsx'
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+def single_sheet_excel_response(sheet_title, filename_prefix, data_func):
+    headers, rows = data_func()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = sheet_title
+    populate_excel_sheet(sheet, headers, rows, 'ExportTable1')
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = f'{filename_prefix}_{export_date_suffix()}.xlsx'
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+def export_dataset_options():
+    """Disa aktarma sayfasinda tablo halinde gosterilecek veri setleri."""
+    return [
+        {
+            'title': 'Oğul Kovanları',
+            'description': 'Oğul kovan konumları, durumları, notları ve yol tarifi linkleri.',
+            'count': len(swarm_export_data()[1]),
+            'csv_endpoint': 'admin_export_swarm_hives_csv',
+            'xlsx_endpoint': 'admin_export_swarm_hives_xlsx',
+        },
+        {
+            'title': 'Sabit Kovanlar',
+            'description': 'Arılık adı, kroki bilgileri, durum, aktiflik ve yol tarifi linkleri.',
+            'count': len(fixed_hive_export_data()[1]),
+            'csv_endpoint': 'admin_export_fixed_hives_csv',
+            'xlsx_endpoint': 'admin_export_fixed_hives_xlsx',
+        },
+        {
+            'title': 'Kontrol Kayıtları',
+            'description': 'Sabit kovan kontrol tarihleri, gözlemler ve bakım notları.',
+            'count': len(inspection_export_data()[1]),
+            'csv_endpoint': 'admin_export_inspections_csv',
+            'xlsx_endpoint': 'admin_export_inspections_xlsx',
+        },
+        {
+            'title': 'Arılık Özeti',
+            'description': 'Arılık bazında toplamlar, durum kırılımları ve en eski kontrol tarihi.',
+            'count': len(apiary_summary_export_data()[1]),
+            'csv_endpoint': 'admin_export_apiary_summary_csv',
+            'xlsx_endpoint': 'admin_export_apiary_summary_xlsx',
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -849,6 +1328,106 @@ def private_qrcode(filename):
 def index():
     """Admin harita sayfasi."""
     return render_template('index.html')
+
+
+@app.route('/admin/backups')
+def admin_backups():
+    """Yedek dosyalarini listeler."""
+    backups = list_backup_files()
+    return render_template('admin_backups.html', backups=backups)
+
+
+@app.route('/admin/backups/create', methods=['POST'])
+def admin_backup_create():
+    """Yeni zip yedegi olusturur."""
+    try:
+        filename = create_backup_zip()
+    except Exception as exc:
+        app.logger.exception('Yedek olusturulamadi')
+        flash(f'Yedek oluşturulamadı: {exc}', 'error')
+    else:
+        flash(f'Yeni yedek oluşturuldu: {filename}', 'success')
+    return redirect(url_for('admin_backups'))
+
+
+@app.route('/admin/backups/<path:filename>/download')
+def admin_backup_download(filename):
+    """Yedek dosyasini oturum arkasinda indirir."""
+    path = backup_path_for(filename)
+    if not path or not os.path.exists(path):
+        abort(404)
+    return send_from_directory(BACKUP_FOLDER, filename, as_attachment=True, download_name=filename)
+
+
+@app.route('/admin/backups/<path:filename>/delete', methods=['POST'])
+def admin_backup_delete(filename):
+    """Yedek dosyasini siler."""
+    path = backup_path_for(filename)
+    if not path or not os.path.exists(path):
+        flash('Yedek dosyası bulunamadı.', 'error')
+    else:
+        os.remove(path)
+        flash('Yedek dosyası silindi.', 'success')
+    return redirect(url_for('admin_backups'))
+
+
+@app.route('/admin/export')
+def admin_export():
+    """Disa aktarma indirme sayfasi."""
+    return render_template('admin_export.html', datasets=export_dataset_options())
+
+
+@app.route('/admin/export/swarm-hives.csv')
+def admin_export_swarm_hives_csv():
+    headers, rows = swarm_export_data()
+    filename = f'ogul_kovanlari_{export_date_suffix()}.csv'
+    return csv_download_response(filename, headers, rows)
+
+
+@app.route('/admin/export/swarm-hives.xlsx')
+def admin_export_swarm_hives_xlsx():
+    return single_sheet_excel_response('Oğul Kovanları', 'ogul_kovanlari', swarm_export_data)
+
+
+@app.route('/admin/export/fixed-hives.csv')
+def admin_export_fixed_hives_csv():
+    headers, rows = fixed_hive_export_data()
+    filename = f'sabit_kovanlar_{export_date_suffix()}.csv'
+    return csv_download_response(filename, headers, rows)
+
+
+@app.route('/admin/export/fixed-hives.xlsx')
+def admin_export_fixed_hives_xlsx():
+    return single_sheet_excel_response('Sabit Kovanlar', 'sabit_kovanlar', fixed_hive_export_data)
+
+
+@app.route('/admin/export/inspections.csv')
+def admin_export_inspections_csv():
+    headers, rows = inspection_export_data()
+    filename = f'kontrol_kayitlari_{export_date_suffix()}.csv'
+    return csv_download_response(filename, headers, rows)
+
+
+@app.route('/admin/export/inspections.xlsx')
+def admin_export_inspections_xlsx():
+    return single_sheet_excel_response('Kontrol Kayıtları', 'kontrol_kayitlari', inspection_export_data)
+
+
+@app.route('/admin/export/apiary-summary.csv')
+def admin_export_apiary_summary_csv():
+    headers, rows = apiary_summary_export_data()
+    filename = f'arilik_ozeti_{export_date_suffix()}.csv'
+    return csv_download_response(filename, headers, rows)
+
+
+@app.route('/admin/export/apiary-summary.xlsx')
+def admin_export_apiary_summary_xlsx():
+    return single_sheet_excel_response('Arılık Özeti', 'arilik_ozeti', apiary_summary_excel_data)
+
+
+@app.route('/admin/export/all.xlsx')
+def admin_export_all_xlsx():
+    return excel_download_response()
 
 
 @app.route('/admin/messages')

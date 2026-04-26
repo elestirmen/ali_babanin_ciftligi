@@ -35,6 +35,8 @@
         {% if is_authenticated %}
                 <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
                 <li><a href="{{ url_for('admin_hives') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_') and 'hive' in request.endpoint %}active{% endif %}">Kovanlar</a></li>
+                <li><a href="{{ url_for('admin_export') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_export') %}active{% endif %}">Dışa Aktarma</a></li>
+                <li><a href="{{ url_for('admin_backups') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_backup') %}active{% endif %}">Yedekleme</a></li>
                 <li><a href="{{ url_for('admin_content') }}" class="{% if request.endpoint in ['admin_content', 'admin_posts', 'admin_post_new', 'admin_post_edit', 'admin_honey_stories', 'admin_honey_story_new', 'admin_honey_story_edit'] %}active{% endif %}">İçerik</a></li>
                 <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">Mesajlar</a></li>
                 <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>

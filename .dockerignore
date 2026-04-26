@@ -15,6 +15,7 @@ instance
 uploads
 qrcodes
 public_uploads
+backups
 static/uploads
 static/qrcodes
 *.log

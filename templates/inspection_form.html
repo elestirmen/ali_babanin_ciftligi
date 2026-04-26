@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Yeni Kontrol Kaydı - {{ hive.kovan_no }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="back-link">← {{ hive.kovan_no }} - {{ hive.arilik_adi }}</a>
+
+    <div class="page-header">
+        <h1>📋 Yeni Kontrol Kaydı</h1>
+        <div class="subtitle">{{ hive.kovan_no }} • {{ hive.arilik_adi }}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="kontrol_tarihi">Kontrol Tarihi</label>
+                    <input type="date" id="kontrol_tarihi" name="kontrol_tarihi" class="form-control"
+                           value="{{ now.strftime('%Y-%m-%d') }}">
+                </div>
+
+                <hr class="divider">
+                <h3 style="font-size:1rem; color:var(--color-primary-dark); margin-bottom:12px;">🐝 Koloni Durumu</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ari_yogunlugu">Arı Yoğunluğu</label>
+                        <select id="ari_yogunlugu" name="ari_yogunlugu" class="form-control">
+                            {% for opt in choices.ari_yogunlugu %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="yavru_durumu">Yavru Durumu</label>
+                        <select id="yavru_durumu" name="yavru_durumu" class="form-control">
+                            {% for opt in choices.yavru_durumu %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bal_durumu">Bal Durumu</label>
+                        <select id="bal_durumu" name="bal_durumu" class="form-control">
+                            {% for opt in choices.bal_durumu %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="polen_gelisi">Polen Gelişi</label>
+                        <select id="polen_gelisi" name="polen_gelisi" class="form-control">
+                            {% for opt in choices.polen_gelisi %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="divider">
+                <h3 style="font-size:1rem; color:var(--color-primary-dark); margin-bottom:12px;">👑 Ana Arı</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ana_ari_goruldu">Ana Arı Görüldü mü?</label>
+                        <select id="ana_ari_goruldu" name="ana_ari_goruldu" class="form-control">
+                            {% for opt in choices.ana_ari_goruldu %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="yumurta_var">Yumurta Var mı?</label>
+                        <select id="yumurta_var" name="yumurta_var" class="form-control">
+                            {% for opt in choices.yumurta_var %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="divider">
+                <h3 style="font-size:1rem; color:var(--color-primary-dark); margin-bottom:12px;">🔍 Sağlık & Davranış</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hastalik_belirtisi">Hastalık Belirtisi</label>
+                        <select id="hastalik_belirtisi" name="hastalik_belirtisi" class="form-control">
+                            {% for opt in choices.hastalik_belirtisi %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="saldirganlik">Saldırganlık</label>
+                        <select id="saldirganlik" name="saldirganlik" class="form-control">
+                            {% for opt in choices.saldirganlik %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="divider">
+                <h3 style="font-size:1rem; color:var(--color-primary-dark); margin-bottom:12px;">🍯 Müdahale</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="besleme_yapildi">Besleme Yapıldı mı?</label>
+                        <select id="besleme_yapildi" name="besleme_yapildi" class="form-control">
+                            {% for opt in choices.besleme_yapildi %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ilaclama_yapildi">İlaçlama Yapıldı mı?</label>
+                        <select id="ilaclama_yapildi" name="ilaclama_yapildi" class="form-control">
+                            {% for opt in choices.ilaclama_yapildi %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="notlar">Notlar</label>
+                    <textarea id="notlar" name="notlar" class="form-control"
+                              placeholder="Kontrol sırasındaki gözlemler..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="fotograf">Fotoğraf</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="fotograf" name="fotograf" accept=".jpg,.jpeg,.png,.webp">
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">✅ Kontrol Kaydını Ekle</button>
+                    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline btn-lg">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

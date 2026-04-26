@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit %}Kovan Düzenle{% else %}Yeni Sabit Kovan{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% if edit %}
+        <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="back-link">← Kovan Detay</a>
+    {% else %}
+        <a href="{{ url_for('apiary_detail', id=apiary.id) }}" class="back-link">← {{ apiary.arilik_adi }}</a>
+    {% endif %}
+
+    <div class="page-header">
+        <h1>{% if edit %}✏️ Kovan Düzenle{% else %}📦 Yeni Sabit Kovan{% endif %}</h1>
+        {% if not edit %}
+            <div class="subtitle">{{ apiary.arilik_adi }} arılığına ekleniyor</div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kovan_no">Kovan No *</label>
+                        <input type="text" id="kovan_no" name="kovan_no" class="form-control"
+                               value="{{ hive.kovan_no if hive else '' }}" placeholder="Örn: K1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="durum">Durum</label>
+                        <select id="durum" name="durum" class="form-control">
+                            {% for s in statuses %}
+                                <option value="{{ s }}" {% if hive and hive.durum == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="sira_no">Sıra No</label>
+                        <input type="number" id="sira_no" name="sira_no" class="form-control" min="1"
+                               value="{{ hive.sira_no if hive else '1' }}">
+                        <div class="hint">Krokideki sıra numarası</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="konum_no">Konum No</label>
+                        <input type="number" id="konum_no" name="konum_no" class="form-control" min="1"
+                               value="{{ hive.konum_no if hive else '1' }}">
+                        <div class="hint">Sıradaki konum numarası</div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ana_ari_yili">Ana Arı Yılı</label>
+                        <input type="number" id="ana_ari_yili" name="ana_ari_yili" class="form-control"
+                               value="{{ hive.ana_ari_yili if hive and hive.ana_ari_yili else '' }}" placeholder="2024" min="2000" max="2099">
+                    </div>
+                    <div class="form-group">
+                        <label for="kat_sayisi">Kat Sayısı</label>
+                        <input type="number" id="kat_sayisi" name="kat_sayisi" class="form-control" min="1"
+                               value="{{ hive.kat_sayisi if hive else '1' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="cerceve_sayisi">Çerçeve Sayısı</label>
+                    <input type="number" id="cerceve_sayisi" name="cerceve_sayisi" class="form-control" min="1"
+                           value="{{ hive.cerceve_sayisi if hive else '10' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="genel_not">Genel Not</label>
+                    <textarea id="genel_not" name="genel_not" class="form-control"
+                              placeholder="Kovan hakkında notlar...">{{ hive.genel_not if hive else '' }}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="fotograf">Fotoğraf</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="fotograf" name="fotograf" accept=".jpg,.jpeg,.png,.webp">
+                    </div>
+                    {% if hive and hive.fotograf_yolu %}
+                        <div class="mt-1" style="font-size:0.8rem; color:var(--text-muted);">
+                            📷 Mevcut fotoğraf var. Yeni fotoğraf yüklerseniz değiştirilir.
+                        </div>
+                    {% endif %}
+                </div>
+
+                {% if edit %}
+                <div class="form-check">
+                    <input type="checkbox" id="aktif" name="aktif" {% if hive.aktif %}checked{% endif %}>
+                    <label for="aktif">Aktif</label>
+                </div>
+                {% endif %}
+
+                <hr class="divider">
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">
+                        {% if edit %}💾 Kaydet{% else %}✅ Ekle{% endif %}
+                    </button>
+                    {% if edit %}
+                        <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline btn-lg">İptal</a>
+                    {% else %}
+                        <a href="{{ url_for('apiary_detail', id=apiary.id) }}" class="btn btn-outline btn-lg">İptal</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

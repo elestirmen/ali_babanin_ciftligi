@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}{{ hive.kovan_no }} - {{ hive.arilik_adi }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('apiary_detail', id=hive.arilik_id_val) }}" class="back-link">← {{ hive.arilik_adi }}</a>
+
+    {% if is_overdue(hive.son_kontrol_tarihi) and hive.aktif %}
+        <div class="overdue-banner">
+            ⚠️ Kontrol zamanı geçmiş! Son kontrol: {{ hive.son_kontrol_tarihi|days_ago }}
+        </div>
+    {% endif %}
+
+    <div class="page-header">
+        <div>
+            <h1>{{ hive.kovan_no }}</h1>
+            <div class="subtitle">{{ hive.arilik_adi }} • Sabit Kovan</div>
+        </div>
+        <a href="{{ url_for('fixed_hive_edit', id=hive.id) }}" class="btn btn-outline btn-sm">✏️ Düzenle</a>
+    </div>
+
+    <!-- Durum Badge -->
+    <div class="mb-2">
+        <span class="badge
+            {% if not hive.aktif or hive.durum == 'Pasif' %}badge-gray
+            {% elif hive.durum in ['Güçlü', 'Bal durumu iyi'] %}badge-green
+            {% elif hive.durum == 'Orta' %}badge-yellow
+            {% elif hive.durum in ['Zayıf', 'Ana arı sorunu var', 'Hastalık şüphesi var', 'Kontrol gerekli'] %}badge-red
+            {% else %}badge-blue{% endif %}" style="font-size:0.85rem; padding:5px 14px;">
+            {{ hive.durum }}
+        </span>
+        {% if not hive.aktif %}
+            <span class="badge badge-gray" style="font-size:0.85rem; padding:5px 14px;">Pasif</span>
+        {% endif %}
+    </div>
+
+    <!-- Fotoğraf -->
+    {% if hive.fotograf_yolu %}
+        <div class="photo-container">
+            <img src="{{ url_for('static', filename=hive.fotograf_yolu) }}" alt="{{ hive.kovan_no }}">
+        </div>
+    {% endif %}
+
+    <!-- Detaylar -->
+    <div class="detail-section">
+        <div class="detail-grid">
+            <div class="detail-item">
+                <div class="detail-label">Sıra / Konum</div>
+                <div class="detail-value">Sıra {{ hive.sira_no }}, Konum {{ hive.konum_no }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Ana Arı Yılı</div>
+                <div class="detail-value">{{ hive.ana_ari_yili if hive.ana_ari_yili else 'Belirtilmedi' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Kat Sayısı</div>
+                <div class="detail-value">{{ hive.kat_sayisi }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Çerçeve Sayısı</div>
+                <div class="detail-value">{{ hive.cerceve_sayisi }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Son Kontrol</div>
+                <div class="detail-value">
+                    {{ hive.son_kontrol_tarihi|format_date }}
+                    <br><small class="text-muted">{{ hive.son_kontrol_tarihi|days_ago }}</small>
+                </div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Durum</div>
+                <div class="detail-value">{{ hive.durum }}</div>
+            </div>
+            {% if hive.genel_not %}
+            <div class="detail-item full-width">
+                <div class="detail-label">Genel Not</div>
+                <div class="detail-value">{{ hive.genel_not }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Aksiyon Butonları -->
+    <div class="btn-group mb-2">
+        <a href="{{ url_for('inspection_new', id=hive.id) }}" class="btn btn-accent">📋 Yeni Kontrol Kaydı</a>
+        <a href="{{ url_for('inspection_history', id=hive.id) }}" class="btn btn-outline">📜 Kontrol Geçmişi</a>
+        <a href="{{ url_for('fixed_hive_qr', id=hive.id) }}" class="btn btn-outline">📱 QR Kod</a>
+    </div>
+
+    <!-- Son Kontrol Kayıtları -->
+    {% if inspections %}
+        <div class="card">
+            <div class="card-header">📋 Son Kontroller</div>
+            <div class="card-body">
+                {% for insp in inspections %}
+                    <div class="inspection-card">
+                        <div class="inspection-date">📅 {{ insp.kontrol_tarihi|format_date }}</div>
+                        <div class="inspection-grid">
+                            <div class="inspection-field">
+                                <span class="field-label">Arı Yoğ.</span>
+                                <span class="field-value">{{ insp.ari_yogunlugu }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Yavru</span>
+                                <span class="field-value">{{ insp.yavru_durumu }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Bal</span>
+                                <span class="field-value">{{ insp.bal_durumu }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Ana Arı</span>
+                                <span class="field-value">{{ insp.ana_ari_goruldu }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Hastalık</span>
+                                <span class="field-value {% if insp.hastalik_belirtisi != 'Yok' %}text-danger{% endif %}">{{ insp.hastalik_belirtisi }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Yumurta</span>
+                                <span class="field-value">{{ insp.yumurta_var }}</span>
+                            </div>
+                        </div>
+                        {% if insp.notlar %}
+                            <div class="inspection-notes">📝 {{ insp.notlar }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+                {% if inspections|length >= 5 %}
+                    <div class="text-center mt-1">
+                        <a href="{{ url_for('inspection_history', id=hive.id) }}" class="btn btn-outline btn-sm">Tüm Geçmişi Gör →</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Oğul Kovanları - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1>🏕️ Oğul Kovanları</h1>
+            <div class="subtitle">Köy arazisindeki oğul yakalama kovanları</div>
+        </div>
+        <a href="{{ url_for('swarm_new') }}" class="btn btn-accent">+ Yeni Kovan</a>
+    </div>
+
+    {% if hives %}
+        <div class="hive-list">
+            {% for hive in hives %}
+                <a href="{{ url_for('swarm_detail', id=hive.id) }}" class="hive-item {% if not hive.aktif %}inactive{% endif %}">
+                    <div class="hive-item-icon" style="background:
+                        {% if not hive.aktif or hive.durum in ['Taşındı', 'İptal edildi'] %}#ECEFF1
+                        {% elif hive.durum in ['Oğul girdi', 'Ana arı kontrol edildi'] %}#E8F5E9
+                        {% elif hive.durum == 'Arı hareketi var' %}#FFF8E1
+                        {% elif is_overdue(hive.son_kontrol_tarihi) %}#FFEBEE
+                        {% else %}#E3F2FD{% endif %};">
+                        {% if not hive.aktif %}🔇{% elif hive.durum == 'Oğul girdi' %}🎉{% elif hive.durum == 'Arı hareketi var' %}🐝{% elif hive.durum == 'Boş' %}📦{% else %}🏕️{% endif %}
+                    </div>
+                    <div class="hive-item-content">
+                        <div class="hive-item-title">{{ hive.ad }}</div>
+                        <div class="hive-item-meta">
+                            <span class="hive-item-status">
+                                <span class="badge
+                                    {% if not hive.aktif or hive.durum in ['Taşındı', 'İptal edildi'] %}badge-gray
+                                    {% elif hive.durum in ['Oğul girdi', 'Ana arı kontrol edildi'] %}badge-green
+                                    {% elif hive.durum == 'Arı hareketi var' %}badge-yellow
+                                    {% elif is_overdue(hive.son_kontrol_tarihi) %}badge-red
+                                    {% else %}badge-blue{% endif %}">
+                                    {{ hive.durum }}
+                                </span>
+                            </span>
+                            <span>📅 {{ hive.son_kontrol_tarihi|days_ago }}</span>
+                        </div>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">🏕️</div>
+            <h3>Henüz oğul kovanı eklenmemiş</h3>
+            <p>Yeni bir oğul kovanı ekleyerek başlayın.</p>
+            <a href="{{ url_for('swarm_new') }}" class="btn btn-accent">+ Yeni Kovan Ekle</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

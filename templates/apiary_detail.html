@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{{ apiary.arilik_adi }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('apiary_list') }}" class="back-link">← Arılıklar</a>
+
+    <div class="page-header">
+        <div>
+            <h1>{{ apiary.arilik_adi }}</h1>
+            <div class="subtitle">Sabit Arılık</div>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('apiary_edit', id=apiary.id) }}" class="btn btn-outline btn-sm">✏️ Düzenle</a>
+            <a href="{{ url_for('fixed_hive_new', apiary_id=apiary.id) }}" class="btn btn-accent btn-sm">+ Kovan Ekle</a>
+        </div>
+    </div>
+
+    <!-- Arılık bilgileri -->
+    {% if apiary.aciklama %}
+        <div class="card mb-2">
+            <div class="card-body">
+                <p style="margin:0; color:var(--text-secondary);">{{ apiary.aciklama }}</p>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if apiary.latitude and apiary.longitude %}
+        <div class="mb-2">
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ apiary.latitude }},{{ apiary.longitude }}"
+               target="_blank" rel="noopener" class="btn btn-success btn-sm">
+                🧭 Yol Tarifi Al
+            </a>
+        </div>
+    {% endif %}
+
+    <!-- Arılık Krokisi -->
+    {% if hives %}
+        <div class="card mb-2">
+            <div class="card-header">📐 Arılık Krokisi</div>
+            <div class="card-body">
+                {% if max_sira > 0 and max_konum > 0 %}
+                    <div class="apiary-grid" style="grid-template-columns: repeat({{ max_konum }}, 1fr);">
+                        {% for sira in range(1, max_sira + 1) %}
+                            {% for konum in range(1, max_konum + 1) %}
+                                {% set h = hive_grid.get((sira, konum)) %}
+                                {% if h %}
+                                    <a href="{{ url_for('fixed_hive_detail', id=h.id) }}" class="hive-cell
+                                        {% if not h.aktif or h.durum == 'Pasif' %}status-gray
+                                        {% elif h.durum in ['Güçlü', 'Bal durumu iyi'] %}status-green
+                                        {% elif h.durum == 'Orta' %}status-yellow
+                                        {% elif h.durum in ['Zayıf', 'Ana arı sorunu var', 'Hastalık şüphesi var', 'Kontrol gerekli'] %}status-red
+                                        {% else %}status-blue{% endif %}"
+                                        title="{{ h.kovan_no }} - {{ h.durum }}">
+                                        <span class="cell-no">{{ h.kovan_no }}</span>
+                                        <span class="cell-status">{{ h.durum }}</span>
+                                        <span class="cell-date">{{ h.son_kontrol_tarihi|format_date if h.son_kontrol_tarihi else '—' }}</span>
+                                    </a>
+                                {% else %}
+                                    <div class="hive-cell hive-cell-empty">
+                                        <span class="text-muted" style="font-size:0.7rem;">—</span>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+
+                    <!-- Renk açıklaması -->
+                    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; font-size:0.75rem; color:var(--text-muted);">
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#388E3C;border-radius:2px;vertical-align:middle;"></span> Güçlü / İyi</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#F9A825;border-radius:2px;vertical-align:middle;"></span> Orta</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#D32F2F;border-radius:2px;vertical-align:middle;"></span> Dikkat Gerekiyor</span>
+                        <span><span style="display:inline-block;width:12px;height:12px;background:#9E9E9E;border-radius:2px;vertical-align:middle;"></span> Pasif</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Kovan Listesi -->
+        <div class="card">
+            <div class="card-header">📦 Kovanlar ({{ hives|length }})</div>
+            <div class="card-body" style="padding:0;">
+                <div class="hive-list" style="gap:0;">
+                    {% for h in hives %}
+                        <a href="{{ url_for('fixed_hive_detail', id=h.id) }}" class="hive-item {% if not h.aktif %}inactive{% endif %}" style="border-radius:0; border-left:0; border-right:0; border-top:0; margin:0; box-shadow:none;">
+                            <div class="hive-item-content">
+                                <div class="hive-item-title">{{ h.kovan_no }}
+                                    <span class="badge
+                                        {% if not h.aktif or h.durum == 'Pasif' %}badge-gray
+                                        {% elif h.durum in ['Güçlü', 'Bal durumu iyi'] %}badge-green
+                                        {% elif h.durum == 'Orta' %}badge-yellow
+                                        {% elif h.durum in ['Zayıf', 'Ana arı sorunu var', 'Hastalık şüphesi var', 'Kontrol gerekli'] %}badge-red
+                                        {% else %}badge-blue{% endif %}">{{ h.durum }}</span>
+                                </div>
+                                <div class="hive-item-meta">
+                                    <span>Sıra {{ h.sira_no }}, Konum {{ h.konum_no }}</span>
+                                    <span>📅 {{ h.son_kontrol_tarihi|days_ago }}</span>
+                                    {% if h.ana_ari_yili %}<span>👑 {{ h.ana_ari_yili }}</span>{% endif %}
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📦</div>
+            <h3>Henüz kovan eklenmemiş</h3>
+            <p>Bu arılığa kovan ekleyerek başlayın.</p>
+            <a href="{{ url_for('fixed_hive_new', apiary_id=apiary.id) }}" class="btn btn-accent">+ Kovan Ekle</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

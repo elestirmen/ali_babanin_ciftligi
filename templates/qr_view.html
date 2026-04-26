@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}QR Kod - {{ hive.kovan_no }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="back-link">← {{ hive.kovan_no }} - {{ hive.arilik_adi }}</a>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="qr-container">
+                <div class="qr-label">{{ hive.kovan_no }}</div>
+                <div class="qr-sublabel mb-2">{{ hive.arilik_adi }}</div>
+
+                <img src="{{ url_for('static', filename=qr_path) }}" alt="QR Kod - {{ hive.kovan_no }}">
+
+                <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px;">
+                    Bu QR kodu tarayarak kovan detay sayfasına hızlıca erişebilirsiniz.
+                    QR kodu yazdırıp kovanın üzerine yapıştırabilirsiniz.
+                </p>
+
+                <div class="btn-group" style="justify-content:center;">
+                    <a href="{{ url_for('static', filename=qr_path) }}" download="qr_{{ hive.kovan_no }}.png" class="btn btn-primary">
+                        📥 QR Kodu İndir
+                    </a>
+                    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline">
+                        ← Kovan Detay
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit %}Arılık Düzenle{% else %}Yeni Arılık{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('apiary_list') }}" class="back-link">← Arılıklar</a>
+
+    <div class="page-header">
+        <h1>{% if edit %}✏️ Arılık Düzenle{% else %}🏠 Yeni Arılık{% endif %}</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <div class="form-group">
+                    <label for="arilik_adi">Arılık Adı *</label>
+                    <input type="text" id="arilik_adi" name="arilik_adi" class="form-control"
+                           value="{{ apiary.arilik_adi if apiary else '' }}" placeholder="Örn: Ana Arılık" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="latitude">Enlem (Latitude)</label>
+                        <input type="number" step="any" id="latitude" name="latitude" class="form-control"
+                               value="{{ apiary.latitude if apiary and apiary.latitude else '' }}" placeholder="37.7700">
+                    </div>
+                    <div class="form-group">
+                        <label for="longitude">Boylam (Longitude)</label>
+                        <input type="number" step="any" id="longitude" name="longitude" class="form-control"
+                               value="{{ apiary.longitude if apiary and apiary.longitude else '' }}" placeholder="30.2850">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-outline btn-block" id="btnGetLocation">
+                        📍 Mevcut Konumumu Al
+                    </button>
+                    <div class="hint" id="locationStatus"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="aciklama">Açıklama</label>
+                    <textarea id="aciklama" name="aciklama" class="form-control"
+                              placeholder="Arılık hakkında bilgiler...">{{ apiary.aciklama if apiary else '' }}</textarea>
+                </div>
+
+                <hr class="divider">
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">
+                        {% if edit %}💾 Kaydet{% else %}✅ Ekle{% endif %}
+                    </button>
+                    <a href="{{ url_for('apiary_list') }}" class="btn btn-outline btn-lg">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.getElementById('btnGetLocation').addEventListener('click', function() {
+        var statusEl = document.getElementById('locationStatus');
+        if (!navigator.geolocation) {
+            statusEl.textContent = '❌ Tarayıcınız konum desteği sunmuyor.';
+            return;
+        }
+        statusEl.textContent = '📍 Konum alınıyor...';
+        this.disabled = true;
+        var self = this;
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                document.getElementById('latitude').value = pos.coords.latitude.toFixed(6);
+                document.getElementById('longitude').value = pos.coords.longitude.toFixed(6);
+                statusEl.textContent = '✅ Konum alındı!';
+                self.disabled = false;
+            },
+            function(err) {
+                statusEl.textContent = '❌ Konum alınamadı: ' + err.message;
+                self.disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 15000 }
+        );
+    });
+</script>
+{% endblock %}

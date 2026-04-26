@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Kontrol Geçmişi - {{ hive.kovan_no }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="back-link">← {{ hive.kovan_no }} - {{ hive.arilik_adi }}</a>
+
+    <div class="page-header">
+        <div>
+            <h1>📜 Kontrol Geçmişi</h1>
+            <div class="subtitle">{{ hive.kovan_no }} • {{ hive.arilik_adi }}</div>
+        </div>
+        <a href="{{ url_for('inspection_new', id=hive.id) }}" class="btn btn-accent btn-sm">+ Yeni Kontrol</a>
+    </div>
+
+    {% if inspections %}
+        {% for insp in inspections %}
+            <div class="inspection-card">
+                <div class="inspection-date">📅 {{ insp.kontrol_tarihi|format_date }}</div>
+                <div class="inspection-grid">
+                    <div class="inspection-field">
+                        <span class="field-label">Arı Yoğunluğu:</span>
+                        <span class="field-value">{{ insp.ari_yogunlugu }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Yavru Durumu:</span>
+                        <span class="field-value">{{ insp.yavru_durumu }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Bal Durumu:</span>
+                        <span class="field-value">{{ insp.bal_durumu }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Polen Gelişi:</span>
+                        <span class="field-value">{{ insp.polen_gelisi }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Ana Arı Görüldü:</span>
+                        <span class="field-value">{{ insp.ana_ari_goruldu }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Yumurta:</span>
+                        <span class="field-value">{{ insp.yumurta_var }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Hastalık:</span>
+                        <span class="field-value {% if insp.hastalik_belirtisi != 'Yok' %}text-danger{% endif %}">{{ insp.hastalik_belirtisi }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Saldırganlık:</span>
+                        <span class="field-value">{{ insp.saldirganlik }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Besleme:</span>
+                        <span class="field-value">{{ insp.besleme_yapildi }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">İlaçlama:</span>
+                        <span class="field-value">{{ insp.ilaclama_yapildi }}</span>
+                    </div>
+                </div>
+                {% if insp.notlar %}
+                    <div class="inspection-notes">📝 {{ insp.notlar }}</div>
+                {% endif %}
+                {% if insp.fotograf_yolu %}
+                    <div class="mt-1">
+                        <img src="{{ url_for('static', filename=insp.fotograf_yolu) }}" alt="Kontrol fotoğrafı"
+                             style="max-width:200px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <h3>Henüz kontrol kaydı yok</h3>
+            <p>Bu kovan için ilk kontrol kaydını ekleyin.</p>
+            <a href="{{ url_for('inspection_new', id=hive.id) }}" class="btn btn-accent">+ Yeni Kontrol Kaydı</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

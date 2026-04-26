@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Arılıklar - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1>🏠 Arılıklar</h1>
+            <div class="subtitle">Sabit arılık alanları</div>
+        </div>
+        <a href="{{ url_for('apiary_new') }}" class="btn btn-accent">+ Yeni Arılık</a>
+    </div>
+
+    {% if apiaries %}
+        <div class="hive-list">
+            {% for apiary in apiaries %}
+                <a href="{{ url_for('apiary_detail', id=apiary.id) }}" class="hive-item">
+                    <div class="hive-item-icon" style="background:#E8F5E9;">🏠</div>
+                    <div class="hive-item-content">
+                        <div class="hive-item-title">{{ apiary.arilik_adi }}</div>
+                        <div class="hive-item-meta">
+                            <span>📦 {{ apiary.kovan_sayisi }} kovan</span>
+                            {% if apiary.aciklama %}
+                                <span>• {{ apiary.aciklama[:60] }}{% if apiary.aciklama|length > 60 %}...{% endif %}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">🏠</div>
+            <h3>Henüz arılık eklenmemiş</h3>
+            <p>Yeni bir arılık ekleyerek başlayın.</p>
+            <a href="{{ url_for('apiary_new') }}" class="btn btn-accent">+ Yeni Arılık Ekle</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

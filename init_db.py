@@ -101,6 +101,22 @@ def create_tables():
         )
     ''')
 
+    # Public siteden birakilan mesajlar
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS public_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad TEXT NOT NULL,
+            iletisim TEXT,
+            konu TEXT,
+            mesaj TEXT NOT NULL,
+            ip_adresi TEXT,
+            user_agent TEXT,
+            okundu INTEGER DEFAULT 0 CHECK (okundu IN (0, 1)),
+            olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            okundu_tarihi TEXT
+        )
+    ''')
+
     cursor.execute('''
         CREATE UNIQUE INDEX IF NOT EXISTS idx_fixed_hives_apiary_kovan_no
         ON fixed_hives (arilik_id, kovan_no COLLATE NOCASE)

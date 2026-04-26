@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Mesaj Bırak - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-form-container">
+    <div class="page-header">
+        <div>
+            <h1>Mesaj Bırak</h1>
+            <div class="subtitle">Arıcılık, bal, ziyaret veya genel sorular için kısa bir not bırakabilirsiniz.</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" class="public-message-form">
+                <div class="form-group hp-field">
+                    <label for="website">Web sitesi</label>
+                    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ad">Ad</label>
+                        <input type="text" id="ad" name="ad" class="form-control" maxlength="80" value="{{ form.ad }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="iletisim">İletişim</label>
+                        <input type="text" id="iletisim" name="iletisim" class="form-control" maxlength="120" value="{{ form.iletisim }}" placeholder="Telefon veya e-posta">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="konu">Konu</label>
+                    <input type="text" id="konu" name="konu" class="form-control" maxlength="120" value="{{ form.konu }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="mesaj">Mesaj</label>
+                    <textarea id="mesaj" name="mesaj" class="form-control" maxlength="2000" rows="7" required>{{ form.mesaj }}</textarea>
+                    <div class="hint">Kovan konumu, güvenlik bilgisi veya hassas kişisel veri paylaşmayın.</div>
+                </div>
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary">Gönder</button>
+                    <a href="{{ url_for('public_home') }}" class="btn btn-outline">Ana Sayfa</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

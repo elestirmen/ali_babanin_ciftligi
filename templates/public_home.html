@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Ali Baba'nın Çiftliği - Kapadokya Arıcılığı{% endblock %}
+
+{% block content %}
+<main class="public-page">
+    <section class="public-hero">
+        <img src="{{ url_for('static', filename='img/public-hero.webp') }}" alt="Kapadokya kırsalında arı kovanları">
+        <div class="public-hero-content">
+            <p class="public-kicker">Ürgüp ve Karlık köyü çevresinde küçük ölçekli arıcılık</p>
+            <h1>Ali Baba'nın Çiftliği</h1>
+            <p>Arıların mevsim ritmini, Kapadokya florasını ve kovan bakımında nelere dikkat edildiğini sade bir dille anlatan arıcılık günlüğü.</p>
+            <div class="public-actions">
+                <a href="{{ url_for('public_message') }}" class="btn btn-accent">Mesaj Bırak</a>
+                {% if is_authenticated %}
+                    <a href="{{ url_for('index') }}" class="btn btn-light">Panele Git</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="btn btn-light">Admin Girişi</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="public-band">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Bu Sayfada Ne Var?</h2>
+                <p>Kovan konumları güvenlik nedeniyle paylaşılmaz; burada arıcılığı anlamaya yarayan genel bilgiler ve anonim çiftlik özeti bulunur.</p>
+            </div>
+            <div class="public-grid public-grid-3">
+                <article class="info-card">
+                    <div class="info-icon">🌿</div>
+                    <h3>Kapadokya Florası</h3>
+                    <p>Bağ çevresi, kır çiçekleri, kekik benzeri aromatik bitkiler ve mevsimsel çiçeklenme arıların çalışma düzenini belirler.</p>
+                </article>
+                <article class="info-card">
+                    <div class="info-icon">🍯</div>
+                    <h3>Balın Yolculuğu</h3>
+                    <p>Nektarın kovana taşınması, petekte olgunlaşması ve hasat zamanının doğru seçilmesi bal kalitesinin temelidir.</p>
+                </article>
+                <article class="info-card">
+                    <div class="info-icon">📋</div>
+                    <h3>Düzenli Kontrol</h3>
+                    <p>Ana arı, yavru düzeni, bal ve polen durumu kısa notlarla izlenir; amaç erken fark etmek ve gereksiz müdahaleden kaçınmaktır.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section class="public-band public-band-muted">
+        <div class="public-inner public-split">
+            <div>
+                <h2>Mevsim Mevsim Arıcılık</h2>
+                <p>Arıcılıkta işlerin çoğu takvime değil, hava durumuna ve koloninin gücüne göre şekillenir. Yine de temel ritim nettir.</p>
+            </div>
+            <div class="season-list">
+                <div><strong>İlkbahar</strong><span>Koloni gelişimi, ana arı ve yavru düzeni izlenir.</span></div>
+                <div><strong>Yaz</strong><span>Bal akımı, su ihtiyacı ve gölgeleme takip edilir.</span></div>
+                <div><strong>Sonbahar</strong><span>Besin stoku, zayıf koloniler ve kış hazırlığı değerlendirilir.</span></div>
+                <div><strong>Kış</strong><span>Kovan huzuru korunur; gereksiz açma yapılmaz.</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="public-band">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Çiftlik Özeti</h2>
+                <p>Bu sayılar yaklaşık ve anonime yakındır; özel arılık noktaları ve kovan konumları gösterilmez.</p>
+            </div>
+            <div class="public-stats">
+                <div><strong>{{ stats.apiary_count or 0 }}</strong><span>arılık alanı</span></div>
+                <div><strong>{{ stats.active_hive_count or 0 }}</strong><span>aktif sabit kovan</span></div>
+                <div><strong>{{ stats.swarm_hive_count or 0 }}</strong><span>oğul takip kovanı</span></div>
+                <div><strong>{{ stats.inspection_count or 0 }}</strong><span>kontrol kaydı</span></div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}

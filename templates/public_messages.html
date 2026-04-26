@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Mesajlar - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1>Mesajlar</h1>
+            <div class="subtitle">{{ unread_count }} okunmamış mesaj</div>
+        </div>
+    </div>
+
+    {% if messages %}
+        <div class="message-list">
+            {% for message in messages %}
+                <article class="message-item {% if not message.okundu %}unread{% endif %}">
+                    <div class="message-top">
+                        <div>
+                            <h2>{{ message.konu or 'Konu belirtilmedi' }}</h2>
+                            <div class="message-meta">{{ message.ad }} • {{ message.olusturma_tarihi }}</div>
+                        </div>
+                        {% if message.okundu %}
+                            <span class="badge badge-gray">Okundu</span>
+                        {% else %}
+                            <span class="badge badge-blue">Yeni</span>
+                        {% endif %}
+                    </div>
+                    {% if message.iletisim %}
+                        <div class="message-contact">{{ message.iletisim }}</div>
+                    {% endif %}
+                    <p>{{ message.mesaj }}</p>
+                    {% if not message.okundu %}
+                        <form method="POST" action="{{ url_for('admin_message_mark_read', id=message.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-outline btn-sm">Okundu İşaretle</button>
+                        </form>
+                    {% endif %}
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">✉️</div>
+            <h3>Henüz mesaj yok</h3>
+            <p>Public sayfadaki mesaj formundan gelen notlar burada listelenecek.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

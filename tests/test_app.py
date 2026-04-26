@@ -46,8 +46,12 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_pages_require_login(self):
+    def test_public_home_is_visible_and_admin_requires_login(self):
         response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Ali Baba", response.data)
+
+        response = self.client.get('/admin')
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login', response.headers['Location'])
 
@@ -57,7 +61,23 @@ class AppSecurityAndValidationTests(unittest.TestCase):
 
         response = self.client.post('/login', data={'password': 'alibaba'})
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers['Location'], '/')
+        self.assertEqual(response.headers['Location'], '/admin')
+
+    def test_public_message_can_be_left_without_login(self):
+        response = self.client.post('/mesaj-birak', data={
+            'ad': 'Ziyaretci',
+            'iletisim': 'ziyaretci@example.com',
+            'konu': 'Bal',
+            'mesaj': 'Merhaba, bal hakkında bilgi almak istiyorum.',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/mesaj-birak')
+        self.assertEqual(self.count_rows('public_messages'), 1)
+
+    def test_admin_messages_require_login(self):
+        response = self.client.get('/admin/messages')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.headers['Location'])
 
     def test_csrf_required_for_post_routes(self):
         self.login()

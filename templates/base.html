@@ -2,9 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Ali Baba'nın Çiftliği - Kovan Takip Sistemi">
+    <meta name="theme-color" content="#5D4037">
     <title>{% block title %}Ali Baba'nın Çiftliği{% endblock %}</title>
+    <link rel="manifest" href="{{ url_for('manifest') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -19,14 +22,17 @@
 <body>
     <!-- Navbar -->
     <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="navbar-brand">
+        <a href="{{ url_for('public_home') }}" class="navbar-brand">
             <span class="brand-icon">🐝</span>
             <span>Ali Baba'nın Çiftliği</span>
         </a>
+        <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
+        <ul class="navbar-nav" id="navMenu">
+            <li><a href="{{ url_for('public_home') }}" class="{% if request.endpoint == 'public_home' %}active{% endif %}">Bilgi</a></li>
+            <li><a href="{{ url_for('public_message') }}" class="{% if request.endpoint == 'public_message' %}active{% endif %}">Mesaj Bırak</a></li>
         {% if is_authenticated %}
-            <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
-            <ul class="navbar-nav" id="navMenu">
                 <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
+                <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">Mesajlar</a></li>
                 <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
                 <li><a href="{{ url_for('apiary_list') }}" class="{% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
                 <li>
@@ -35,8 +41,10 @@
                         <button type="submit" class="navbar-logout">Çıkış</button>
                     </form>
                 </li>
-            </ul>
+        {% else %}
+                <li><a href="{{ url_for('login') }}">Giriş</a></li>
         {% endif %}
+        </ul>
     </nav>
 
     <!-- Flash mesajları -->
@@ -74,6 +82,7 @@
             });
         }
     </script>
+    <script src="{{ url_for('static', filename='js/pwa.js') }}"></script>
 
     {% block extra_scripts %}{% endblock %}
 </body>

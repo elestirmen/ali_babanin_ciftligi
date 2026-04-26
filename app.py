@@ -73,7 +73,15 @@ INSPECTION_CHOICES = {
 # Basit oturum ve CSRF korumasi
 # ---------------------------------------------------------------------------
 
-PUBLIC_ENDPOINTS = {'login', 'static'}
+PUBLIC_ENDPOINTS = {
+    'login',
+    'static',
+    'public_home',
+    'public_message',
+    'offline',
+    'manifest',
+    'service_worker',
+}
 
 
 def is_safe_local_next(value):
@@ -508,13 +516,131 @@ def logout():
 
 
 # ---------------------------------------------------------------------------
-# Ana Sayfa (Harita)
+# Public Sayfalar
 # ---------------------------------------------------------------------------
 
 @app.route('/')
+def public_home():
+    """Halka acik bilgilendirici ana sayfa."""
+    stats = query_db('''
+        SELECT
+            (SELECT COUNT(*) FROM apiaries) as apiary_count,
+            (SELECT COUNT(*) FROM fixed_hives WHERE aktif = 1) as active_hive_count,
+            (SELECT COUNT(*) FROM swarm_hives WHERE aktif = 1) as swarm_hive_count,
+            (SELECT COUNT(*) FROM inspections) as inspection_count
+    ''', one=True)
+    return render_template('public_home.html', stats=stats)
+
+
+@app.route('/mesaj-birak', methods=['GET', 'POST'])
+def public_message():
+    """Ziyaretcilerden mesaj alir."""
+    form = {
+        'ad': '',
+        'iletisim': '',
+        'konu': '',
+        'mesaj': '',
+    }
+
+    if request.method == 'POST':
+        # Basit bot filtresi; dolu gelirse sessizce basarili gibi davran.
+        if request.form.get('website', '').strip():
+            flash('Mesajiniz alindi.', 'success')
+            return redirect(url_for('public_message'))
+
+        form = {key: request.form.get(key, '').strip() for key in form}
+        errors = []
+        if not form['ad']:
+            errors.append('Ad alanı zorunludur.')
+        if not form['mesaj']:
+            errors.append('Mesaj alanı zorunludur.')
+        if len(form['ad']) > 80:
+            errors.append('Ad en fazla 80 karakter olabilir.')
+        if len(form['iletisim']) > 120:
+            errors.append('İletişim bilgisi en fazla 120 karakter olabilir.')
+        if len(form['konu']) > 120:
+            errors.append('Konu en fazla 120 karakter olabilir.')
+        if len(form['mesaj']) > 2000:
+            errors.append('Mesaj en fazla 2000 karakter olabilir.')
+
+        if errors:
+            flash_errors(errors)
+        else:
+            execute_db('''
+                INSERT INTO public_messages
+                (ad, iletisim, konu, mesaj, ip_adresi, user_agent)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                form['ad'],
+                form['iletisim'] or None,
+                form['konu'] or None,
+                form['mesaj'],
+                request.remote_addr,
+                request.headers.get('User-Agent', '')[:255],
+            ))
+            flash('Mesajiniz alindi.', 'success')
+            return redirect(url_for('public_message'))
+
+    return render_template('public_message.html', form=form)
+
+
+@app.route('/offline')
+def offline():
+    """PWA offline durumunda gosterilecek sade sayfa."""
+    return render_template('offline.html')
+
+
+@app.route('/manifest.webmanifest')
+def manifest():
+    """PWA manifest dosyasi."""
+    return app.send_static_file('manifest.webmanifest')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Service worker dosyasi."""
+    response = app.send_static_file('sw.js')
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Admin Ana Sayfa (Harita)
+# ---------------------------------------------------------------------------
+
+@app.route('/admin')
 def index():
-    """Ana harita sayfasi."""
+    """Admin harita sayfasi."""
     return render_template('index.html')
+
+
+@app.route('/admin/messages')
+def admin_messages():
+    """Public mesajlari listeler."""
+    messages = query_db('''
+        SELECT * FROM public_messages
+        ORDER BY okundu ASC, olusturma_tarihi DESC
+    ''')
+    unread_count = query_db(
+        'SELECT COUNT(*) as count FROM public_messages WHERE okundu = 0',
+        one=True
+    )
+    return render_template(
+        'public_messages.html',
+        messages=messages,
+        unread_count=unread_count['count'] if unread_count else 0,
+    )
+
+
+@app.route('/admin/messages/<int:id>/read', methods=['POST'])
+def admin_message_mark_read(id):
+    """Mesaji okundu olarak isaretler."""
+    execute_db(
+        "UPDATE public_messages SET okundu = 1, okundu_tarihi = datetime('now', 'localtime') WHERE id = ?",
+        (id,)
+    )
+    flash('Mesaj okundu olarak işaretlendi.', 'success')
+    return redirect(url_for('admin_messages'))
 
 
 # ---------------------------------------------------------------------------

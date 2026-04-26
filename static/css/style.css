@@ -77,6 +77,7 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 a {
@@ -433,6 +434,16 @@ img {
     border-color: var(--color-primary);
     background: rgba(93, 64, 55, 0.05);
     color: var(--color-primary);
+}
+
+.btn-light {
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--color-primary-dark);
+}
+
+.btn-light:hover {
+    background: white;
+    color: var(--color-primary-dark);
 }
 
 .btn-success {
@@ -1039,4 +1050,325 @@ textarea.form-control {
     border: none;
     border-top: 1px solid var(--border-light);
     margin: 16px 0;
+}
+
+/* --- Public Site --- */
+.public-page {
+    background: var(--bg-body);
+}
+
+.public-hero {
+    min-height: calc(100svh - var(--navbar-height));
+    max-height: 760px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.public-hero img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.public-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(28, 20, 16, 0.78), rgba(28, 20, 16, 0.48) 48%, rgba(28, 20, 16, 0.1));
+}
+
+.public-hero-content {
+    position: relative;
+    z-index: 1;
+    width: min(720px, 100%);
+    padding: 48px 24px 80px;
+    margin-left: max(16px, calc((100vw - 1080px) / 2));
+    color: white;
+}
+
+.public-kicker {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-accent-light);
+    margin-bottom: 10px;
+}
+
+.public-hero h1 {
+    font-size: 3rem;
+    line-height: 1.05;
+    margin-bottom: 16px;
+}
+
+.public-hero p {
+    max-width: 620px;
+    font-size: 1.05rem;
+}
+
+.public-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.public-band {
+    padding: 42px 16px;
+}
+
+.public-band-muted {
+    background: #F2F6EF;
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.public-inner {
+    width: min(1080px, 100%);
+    margin: 0 auto;
+}
+
+.public-section-heading {
+    max-width: 720px;
+    margin-bottom: 22px;
+}
+
+.public-section-heading h2,
+.public-split h2 {
+    color: var(--color-primary-dark);
+    font-size: 1.6rem;
+    line-height: 1.25;
+    margin-bottom: 8px;
+}
+
+.public-section-heading p,
+.public-split p {
+    color: var(--text-secondary);
+}
+
+.public-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.public-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.info-card {
+    background: white;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+
+.info-icon {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+}
+
+.info-card h3 {
+    font-size: 1rem;
+    color: var(--color-primary-dark);
+    margin-bottom: 8px;
+}
+
+.info-card p {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
+.public-split {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 28px;
+    align-items: start;
+}
+
+.season-list {
+    display: grid;
+    gap: 10px;
+}
+
+.season-list div {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(93, 64, 55, 0.14);
+}
+
+.season-list strong {
+    color: var(--color-primary-dark);
+}
+
+.season-list span {
+    color: var(--text-secondary);
+}
+
+.public-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.public-stats div {
+    background: white;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 18px;
+}
+
+.public-stats strong {
+    display: block;
+    color: var(--color-primary-dark);
+    font-size: 2rem;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.public-stats span {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+.public-form-container {
+    max-width: 760px;
+}
+
+.hp-field {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.message-list {
+    display: grid;
+    gap: 12px;
+}
+
+.message-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.message-item.unread {
+    border-color: #90CAF9;
+    background: #F8FCFF;
+}
+
+.message-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.message-top h2 {
+    font-size: 1rem;
+    line-height: 1.35;
+    color: var(--color-primary-dark);
+}
+
+.message-meta,
+.message-contact {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.message-contact {
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.message-item p {
+    white-space: pre-wrap;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+    .navbar {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+    }
+
+    .navbar-brand {
+        font-size: 1rem;
+    }
+
+    .navbar-nav {
+        max-height: calc(100svh - var(--navbar-height));
+        overflow-y: auto;
+    }
+
+    .navbar-nav a,
+    .navbar-logout {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .public-hero {
+        min-height: calc(92svh - var(--navbar-height));
+        align-items: end;
+    }
+
+    .public-hero::after {
+        background: linear-gradient(180deg, rgba(28, 20, 16, 0.18), rgba(28, 20, 16, 0.82));
+    }
+
+    .public-hero-content {
+        margin-left: 0;
+        padding: 36px 18px 56px;
+    }
+
+    .public-hero h1 {
+        font-size: 2.15rem;
+    }
+
+    .public-grid-3,
+    .public-split,
+    .public-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .season-list div {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .btn,
+    .form-control,
+    .navbar-logout {
+        min-height: 44px;
+    }
+
+    .btn-group {
+        align-items: stretch;
+    }
+
+    .btn-group .btn {
+        flex: 1 1 auto;
+    }
+
+    .detail-section + .btn-group {
+        position: sticky;
+        bottom: 0;
+        z-index: 50;
+        background: rgba(250, 248, 245, 0.96);
+        padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+        border-top: 1px solid var(--border-light);
+        backdrop-filter: blur(8px);
+    }
 }

@@ -6,6 +6,17 @@ Köy arazisine koyduğumuz oğul yakalama kovanlarını ve mevcut arılıktaki s
 
 ## Özellikler
 
+### 🌐 Public Bilgilendirici Site
+- Ana sayfa public çalışır; kovan ve arılık konumları public tarafta gösterilmez.
+- Kapadokya/Ürgüp arıcılığı, mevsimsel bakım ve anonim çiftlik özeti sunar.
+- Ziyaretçiler `/mesaj-birak` sayfasından mesaj bırakabilir.
+- Admin mesajları `/admin/messages` sayfasından görüntüler.
+
+### 📱 Mobil Kullanım
+- Mobil menü ve dokunmatik hedefler iyileştirildi.
+- Kovan detayında temel aksiyonlar mobilde altta erişilebilir kalır.
+- PWA manifest ve service worker ile public sayfalar temel çevrimdışı destek alır.
+
 ### 🏕️ Oğul Kovanları
 - Oğul yakalama kovanlarını haritada takip
 - GPS konumu otomatik alma (fotoğraftan EXIF veya tarayıcıdan)
@@ -64,6 +75,8 @@ python app.py
 ```
 
 Uygulama `http://localhost:5000` adresinde çalışacaktır.
+
+Public site `/`, özel harita paneli `/admin` adresindedir.
 
 ## Docker ve Nginx Proxy Manager ile Yayın
 

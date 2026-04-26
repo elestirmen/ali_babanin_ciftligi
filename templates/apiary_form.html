@@ -13,6 +13,7 @@
     <div class="card">
         <div class="card-body">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="arilik_adi">Arılık Adı *</label>
                     <input type="text" id="arilik_adi" name="arilik_adi" class="form-control"

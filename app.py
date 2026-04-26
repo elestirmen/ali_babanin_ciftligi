@@ -4,12 +4,13 @@ Ogul kovanlari ve sabit arilik takip sistemi.
 """
 
 import os
+import secrets
 import sqlite3
 import uuid
 from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, jsonify)
+                   flash, jsonify, session, abort)
 from werkzeug.utils import secure_filename
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -19,14 +20,17 @@ import qrcode
 # Uygulama konfigurasyonu
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
-app.secret_key = 'ali-baba-ciftlik-gizli-anahtar-2024'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'ali_baba.db')
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-QR_FOLDER = os.path.join(BASE_DIR, 'static', 'qrcodes')
+DB_PATH = os.environ.get('ALI_BABA_DB_PATH', os.path.join(BASE_DIR, 'ali_baba.db'))
+UPLOAD_FOLDER = os.environ.get('ALI_BABA_UPLOAD_FOLDER',
+                               os.path.join(BASE_DIR, 'static', 'uploads'))
+QR_FOLDER = os.environ.get('ALI_BABA_QR_FOLDER',
+                           os.path.join(BASE_DIR, 'static', 'qrcodes'))
+APP_PASSWORD = os.environ.get('ALI_BABA_PASSWORD', 'alibaba')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
+app.secret_key = os.environ.get('ALI_BABA_SECRET_KEY') or secrets.token_hex(32)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['QR_FOLDER'] = QR_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
@@ -60,6 +64,45 @@ INSPECTION_CHOICES = {
     'besleme_yapildi': ['Evet', 'Hayır'],
     'ilaclama_yapildi': ['Evet', 'Hayır'],
 }
+
+# ---------------------------------------------------------------------------
+# Basit oturum ve CSRF korumasi
+# ---------------------------------------------------------------------------
+
+PUBLIC_ENDPOINTS = {'login', 'static'}
+
+
+def is_safe_local_next(value):
+    """Sadece uygulama icindeki goreli yonlendirmelere izin verir."""
+    return bool(value) and value.startswith('/') and not value.startswith('//')
+
+
+def csrf_token():
+    """Oturum bazli CSRF token dondurur."""
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+@app.before_request
+def require_login_and_csrf():
+    """Statik dosyalar ve login disinda tum sayfalari basit sifreyle korur."""
+    if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint is None:
+        return None
+
+    if not session.get('authenticated'):
+        next_url = request.full_path if request.query_string else request.path
+        return redirect(url_for('login', next=next_url))
+
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+        expected = session.get('_csrf_token')
+        supplied = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
+        if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+            abort(400, description='CSRF token gecersiz veya eksik.')
+
+    return None
 
 # ---------------------------------------------------------------------------
 # Yardimci fonksiyonlar: Veritabani
@@ -144,6 +187,85 @@ def parse_coordinates(lat_str, lng_str):
         errors.append(f"Boylam: {lng_err}")
 
     return lat_val, lng_val, errors
+
+
+# ---------------------------------------------------------------------------
+# Yardimci fonksiyonlar: Form dogrulama
+# ---------------------------------------------------------------------------
+
+def validate_choice(value, choices, field_label):
+    """Formdan gelen secim izinli listede mi kontrol eder."""
+    if value in choices:
+        return value, None
+    return None, f"{field_label}: Gecersiz secim."
+
+
+def validate_date(value, field_label, required=False):
+    """YYYY-MM-DD tarihini dogrular."""
+    value = (value or '').strip()
+    if not value:
+        if required:
+            return None, f"{field_label}: Tarih zorunludur."
+        return None, None
+    try:
+        datetime.strptime(value, '%Y-%m-%d')
+    except ValueError:
+        return None, f"{field_label}: Gecersiz tarih."
+    return value, None
+
+
+def parse_int_field(value, field_label, default=None, min_val=None, max_val=None):
+    """Sayi alanlarini int'e cevirir ve sinirlarini kontrol eder."""
+    value = (value or '').strip()
+    if not value:
+        return default, None
+    try:
+        parsed = int(value)
+    except (ValueError, TypeError):
+        return None, f"{field_label}: Gecerli bir sayi giriniz."
+
+    if min_val is not None and parsed < min_val:
+        return None, f"{field_label}: En az {min_val} olmali."
+    if max_val is not None and parsed > max_val:
+        return None, f"{field_label}: En fazla {max_val} olmali."
+    return parsed, None
+
+
+def flash_errors(errors):
+    """Bos olmayan hata mesajlarini flash ile gosterir."""
+    for err in errors:
+        if err:
+            flash(err, 'error')
+
+
+def fixed_hive_conflict(apiary_id, kovan_no, sira_no, konum_no, exclude_id=None):
+    """Ayni arilik icinde kovan no veya kroki konumu cakismasini bulur."""
+    params = [apiary_id, kovan_no]
+    exclude_sql = ''
+    if exclude_id is not None:
+        exclude_sql = ' AND id != ?'
+        params.append(exclude_id)
+
+    existing_no = query_db(f'''
+        SELECT id FROM fixed_hives
+        WHERE arilik_id = ? AND lower(kovan_no) = lower(?){exclude_sql}
+        LIMIT 1
+    ''', params, one=True)
+    if existing_no:
+        return 'Bu arilikta ayni kovan numarasi zaten var.'
+
+    params = [apiary_id, sira_no, konum_no]
+    if exclude_id is not None:
+        params.append(exclude_id)
+    existing_position = query_db(f'''
+        SELECT id FROM fixed_hives
+        WHERE arilik_id = ? AND sira_no = ? AND konum_no = ?{exclude_sql}
+        LIMIT 1
+    ''', params, one=True)
+    if existing_position:
+        return 'Bu arilikta ayni sira/konumda baska bir kovan var.'
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -327,13 +449,51 @@ def utility_processor():
     """Template'lere yardimci fonksiyonlar ekler."""
     return {
         'is_overdue': is_overdue,
-        'now': datetime.now()
+        'now': datetime.now(),
+        'csrf_token': csrf_token,
+        'is_authenticated': session.get('authenticated', False)
     }
 
 
 # ===================================================================
 # ROTALAR
 # ===================================================================
+
+# ---------------------------------------------------------------------------
+# Oturum
+# ---------------------------------------------------------------------------
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Basit sifre ile giris."""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if secrets.compare_digest(password, APP_PASSWORD):
+            next_url = request.form.get('next') or request.args.get('next') or url_for('index')
+            if not is_safe_local_next(next_url):
+                next_url = url_for('index')
+
+            session.clear()
+            session['authenticated'] = True
+            session['_csrf_token'] = secrets.token_urlsafe(32)
+            flash('Giris yapildi.', 'success')
+            return redirect(next_url)
+
+        flash('Sifre hatali.', 'error')
+
+    next_url = request.args.get('next') or url_for('index')
+    if not is_safe_local_next(next_url):
+        next_url = url_for('index')
+    return render_template('login.html', next_url=next_url)
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Oturumu kapatir."""
+    session.clear()
+    flash('Cikis yapildi.', 'success')
+    return redirect(url_for('login'))
+
 
 # ---------------------------------------------------------------------------
 # Ana Sayfa (Harita)
@@ -471,6 +631,12 @@ def swarm_new():
             flash('Kovan adı zorunludur.', 'error')
             return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
 
+        durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
+        kurulum_tarihi, date_error = validate_date(kurulum_tarihi, 'Kurulum tarihi')
+        if status_error or date_error:
+            flash_errors([status_error, date_error])
+            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+
         # Fotograf yukleme
         fotograf_yolu = None
         file = request.files.get('fotograf')
@@ -496,7 +662,7 @@ def swarm_new():
 
         # son_kontrol_tarihi mantigi:
         # Kullanici vermemisse kurulum tarihini kullan, o da yoksa bugunu kullan.
-        son_kontrol = kurulum_tarihi if kurulum_tarihi else datetime.now().strftime('%Y-%m-%d')
+        son_kontrol = kurulum_tarihi or datetime.now().strftime('%Y-%m-%d')
 
         execute_db('''
             INSERT INTO swarm_hives (ad, latitude, longitude, kurulum_tarihi,
@@ -543,6 +709,13 @@ def swarm_edit(id):
 
         if not ad:
             flash('Kovan adi zorunludur.', 'error')
+            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+
+        durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
+        kurulum_tarihi, kurulum_error = validate_date(kurulum_tarihi, 'Kurulum tarihi')
+        son_kontrol_tarihi, kontrol_error = validate_date(son_kontrol_tarihi, 'Son kontrol tarihi')
+        if status_error or kurulum_error or kontrol_error:
+            flash_errors([status_error, kurulum_error, kontrol_error])
             return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
 
         # Fotograf guncelleme
@@ -722,22 +895,33 @@ def fixed_hive_new(apiary_id):
             return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
                                    statuses=FIXED_HIVE_STATUSES, edit=False)
 
+        durum, status_error = validate_choice(durum, FIXED_HIVE_STATUSES, 'Durum')
+        sira_val, sira_error = parse_int_field(sira_no, 'Sira no', default=1, min_val=1, max_val=50)
+        konum_val, konum_error = parse_int_field(konum_no, 'Konum no', default=1, min_val=1, max_val=50)
+        kat_val, kat_error = parse_int_field(kat_sayisi, 'Kat sayisi', default=1, min_val=1, max_val=10)
+        cerceve_val, cerceve_error = parse_int_field(cerceve_sayisi, 'Cerceve sayisi',
+                                                      default=10, min_val=1, max_val=50)
+        ana_ari_val, ana_ari_error = parse_int_field(
+            ana_ari_yili, 'Ana ari yili', default=None,
+            min_val=2000, max_val=datetime.now().year + 1
+        )
+        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error]
+        if any(errors):
+            flash_errors(errors)
+            return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
+                                   statuses=FIXED_HIVE_STATUSES, edit=False)
+
+        conflict_error = fixed_hive_conflict(apiary_id, kovan_no, sira_val, konum_val)
+        if conflict_error:
+            flash(conflict_error, 'error')
+            return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
+                                   statuses=FIXED_HIVE_STATUSES, edit=False)
+
         # Fotograf
         fotograf_yolu = None
         file = request.files.get('fotograf')
         if file and file.filename:
             fotograf_yolu = save_upload(file)
-
-        try:
-            sira_val = int(sira_no) if sira_no else 1
-            konum_val = int(konum_no) if konum_no else 1
-            kat_val = int(kat_sayisi) if kat_sayisi else 1
-            cerceve_val = int(cerceve_sayisi) if cerceve_sayisi else 10
-            ana_ari_val = int(ana_ari_yili) if ana_ari_yili else None
-        except (ValueError, TypeError):
-            flash('Sayi alanlarina gecerli deger giriniz.', 'error')
-            return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
-                                   statuses=FIXED_HIVE_STATUSES, edit=False)
 
         execute_db('''
             INSERT INTO fixed_hives (arilik_id, kovan_no, sira_no, konum_no, ana_ari_yili,
@@ -806,23 +990,35 @@ def fixed_hive_edit(id):
             return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
                                    statuses=FIXED_HIVE_STATUSES, edit=True)
 
+        durum, status_error = validate_choice(durum, FIXED_HIVE_STATUSES, 'Durum')
+        sira_val, sira_error = parse_int_field(sira_no, 'Sira no', default=1, min_val=1, max_val=50)
+        konum_val, konum_error = parse_int_field(konum_no, 'Konum no', default=1, min_val=1, max_val=50)
+        kat_val, kat_error = parse_int_field(kat_sayisi, 'Kat sayisi', default=1, min_val=1, max_val=10)
+        cerceve_val, cerceve_error = parse_int_field(cerceve_sayisi, 'Cerceve sayisi',
+                                                      default=10, min_val=1, max_val=50)
+        ana_ari_val, ana_ari_error = parse_int_field(
+            ana_ari_yili, 'Ana ari yili', default=None,
+            min_val=2000, max_val=datetime.now().year + 1
+        )
+        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error]
+        if any(errors):
+            flash_errors(errors)
+            return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
+                                   statuses=FIXED_HIVE_STATUSES, edit=True)
+
+        conflict_error = fixed_hive_conflict(hive['arilik_id'], kovan_no, sira_val, konum_val,
+                                             exclude_id=id)
+        if conflict_error:
+            flash(conflict_error, 'error')
+            return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
+                                   statuses=FIXED_HIVE_STATUSES, edit=True)
+
         fotograf_yolu = hive['fotograf_yolu']
         file = request.files.get('fotograf')
         if file and file.filename:
             new_foto = save_upload(file)
             if new_foto:
                 fotograf_yolu = new_foto
-
-        try:
-            sira_val = int(sira_no) if sira_no else 1
-            konum_val = int(konum_no) if konum_no else 1
-            kat_val = int(kat_sayisi) if kat_sayisi else 1
-            cerceve_val = int(cerceve_sayisi) if cerceve_sayisi else 10
-            ana_ari_val = int(ana_ari_yili) if ana_ari_yili else None
-        except (ValueError, TypeError):
-            flash('Sayi alanlarina gecerli deger giriniz.', 'error')
-            return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
-                                   statuses=FIXED_HIVE_STATUSES, edit=True)
 
         execute_db('''
             UPDATE fixed_hives SET kovan_no=?, sira_no=?, konum_no=?, ana_ari_yili=?,
@@ -853,9 +1049,12 @@ def fixed_hive_qr(id):
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('apiary_list'))
 
-    # QR kod uret
-    qr_path = generate_qr_code(id)
-    execute_db('UPDATE fixed_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
+    qr_path = hive['qr_kod_yolu'] or f"qrcodes/qr_hive_{id}.png"
+    qr_abs_path = os.path.join(BASE_DIR, 'static', qr_path)
+    if not hive['qr_kod_yolu'] or not os.path.exists(qr_abs_path):
+        qr_path = generate_qr_code(id)
+        if hive['qr_kod_yolu'] != qr_path:
+            execute_db('UPDATE fixed_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
 
     return render_template('qr_view.html', hive=hive, qr_path=qr_path)
 
@@ -881,10 +1080,22 @@ def inspection_new(id):
         kontrol_tarihi = request.form.get('kontrol_tarihi', '').strip()
         if not kontrol_tarihi:
             kontrol_tarihi = datetime.now().strftime('%Y-%m-%d')
+        kontrol_tarihi, date_error = validate_date(kontrol_tarihi, 'Kontrol tarihi', required=True)
 
         fields = {}
+        errors = [date_error]
         for key in INSPECTION_CHOICES:
-            fields[key] = request.form.get(key, INSPECTION_CHOICES[key][0])
+            value, choice_error = validate_choice(
+                request.form.get(key, INSPECTION_CHOICES[key][0]),
+                INSPECTION_CHOICES[key],
+                key
+            )
+            fields[key] = value
+            errors.append(choice_error)
+
+        if any(errors):
+            flash_errors(errors)
+            return render_template('inspection_form.html', hive=hive, choices=INSPECTION_CHOICES)
 
         notlar = request.form.get('notlar', '').strip()
 
@@ -946,4 +1157,7 @@ def inspection_history(id):
 if __name__ == '__main__':
     if not os.path.exists(DB_PATH):
         print("[UYARI] Veritabani bulunamadi. Lutfen once 'python init_db.py' calistirin.")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    host = os.environ.get('ALI_BABA_HOST', '127.0.0.1')
+    port = int(os.environ.get('ALI_BABA_PORT', '5000'))
+    debug = os.environ.get('ALI_BABA_DEBUG', '0') == '1'
+    app.run(host=host, port=port, debug=debug)

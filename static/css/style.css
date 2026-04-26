@@ -150,6 +150,28 @@ img {
     background: rgba(255, 255, 255, 0.15);
 }
 
+.navbar-logout-form {
+    margin: 0;
+}
+
+.navbar-logout {
+    color: rgba(255, 255, 255, 0.85);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.navbar-logout:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.15);
+}
+
 /* Hamburger menü (mobil) */
 .navbar-toggle {
     display: none;
@@ -194,6 +216,16 @@ img {
     max-width: 900px;
     margin: 0 auto;
     padding: 16px;
+}
+
+.auth-container {
+    min-height: calc(100vh - var(--navbar-height));
+    display: grid;
+    place-items: center;
+}
+
+.auth-card {
+    width: min(100%, 360px);
 }
 
 /* --- Page Header --- */

@@ -23,12 +23,20 @@
             <span class="brand-icon">🐝</span>
             <span>Ali Baba'nın Çiftliği</span>
         </a>
-        <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
-        <ul class="navbar-nav" id="navMenu">
-            <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
-            <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
-            <li><a href="{{ url_for('apiary_list') }}" class="{% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
-        </ul>
+        {% if is_authenticated %}
+            <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
+            <ul class="navbar-nav" id="navMenu">
+                <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
+                <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
+                <li><a href="{{ url_for('apiary_list') }}" class="{% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
+                <li>
+                    <form method="POST" action="{{ url_for('logout') }}" class="navbar-logout-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="navbar-logout">Çıkış</button>
+                    </form>
+                </li>
+            </ul>
+        {% endif %}
     </nav>
 
     <!-- Flash mesajları -->
@@ -52,15 +60,19 @@
 
     <!-- Mobil menü toggle -->
     <script>
-        document.getElementById('navToggle').addEventListener('click', function() {
-            document.getElementById('navMenu').classList.toggle('open');
-        });
-        // Menü linklerine tıklayınca menüyü kapat (mobil)
-        document.querySelectorAll('#navMenu a').forEach(function(link) {
-            link.addEventListener('click', function() {
-                document.getElementById('navMenu').classList.remove('open');
+        var navToggle = document.getElementById('navToggle');
+        var navMenu = document.getElementById('navMenu');
+        if (navToggle && navMenu) {
+            navToggle.addEventListener('click', function() {
+                navMenu.classList.toggle('open');
             });
-        });
+            // Menü linklerine tıklayınca menüyü kapat (mobil)
+            document.querySelectorAll('#navMenu a').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    navMenu.classList.remove('open');
+                });
+            });
+        }
     </script>
 
     {% block extra_scripts %}{% endblock %}

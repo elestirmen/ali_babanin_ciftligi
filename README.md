@@ -2,7 +2,7 @@
 
 Köy arazisine koyduğumuz oğul yakalama kovanlarını ve mevcut arılıktaki sabit kovanları harita üzerinde takip etmek için geliştirilmiş web uygulaması.
 
-> **⚠️ GÜVENLİK UYARISI:** Bu uygulama kovan konum bilgilerini içerir. Kovan konumları hassas bilgidir ve kötü niyetli kişiler tarafından kovanların çalınması veya zarar verilmesi amacıyla kullanılabilir. **Bu uygulamayı halka açık internette yayınlamayın!** Yalnızca yerel ağda veya güvenli bir şekilde erişim sağlayın. İleride kullanıcı girişi ve yetkilendirme eklenecektir.
+> **⚠️ GÜVENLİK UYARISI:** Bu uygulama kovan konum bilgilerini içerir. Kovan konumları hassas bilgidir ve kötü niyetli kişiler tarafından kovanların çalınması veya zarar verilmesi amacıyla kullanılabilir. **Bu uygulamayı halka açık internette yayınlamayın!** Uygulamada basit parola girişi vardır; varsayılan şifre `alibaba`dır.
 
 ## Özellikler
 
@@ -62,6 +62,37 @@ python app.py
 
 Uygulama `http://localhost:5000` adresinde çalışacaktır.
 
+## Giriş ve Ayarlar
+
+- Varsayılan giriş şifresi: `alibaba`
+- Varsayılan çalışma adresi: `127.0.0.1:5000`
+- Telefonda QR kod kullanmak için aynı ağda çalıştırırken host değerini yerel ağa açın.
+
+### Ortam değişkenleri
+
+```bash
+ALI_BABA_PASSWORD=alibaba
+ALI_BABA_SECRET_KEY=uzun-rastgele-bir-deger
+ALI_BABA_HOST=127.0.0.1
+ALI_BABA_PORT=5000
+ALI_BABA_DEBUG=0
+ALI_BABA_DB_PATH=ali_baba.db
+```
+
+Windows PowerShell örneği:
+
+```powershell
+$env:ALI_BABA_HOST = "0.0.0.0"
+$env:ALI_BABA_PASSWORD = "alibaba"
+python app.py
+```
+
+## Test
+
+```bash
+python -m unittest discover -s tests
+```
+
 ## Teknolojiler
 
 - **Backend:** Python Flask
@@ -73,7 +104,7 @@ Uygulama `http://localhost:5000` adresinde çalışacaktır.
 
 ## Gelecek Planlar
 
-- [ ] Kullanıcı girişi ve yetkilendirme
+- [ ] Kullanıcı yönetimi ve daha ayrıntılı yetkilendirme
 - [ ] PWA desteği (offline çalışma)
 - [ ] CSV / Excel dışa aktarma
 - [ ] Offline harita tile desteği

@@ -13,6 +13,7 @@
     <div class="card">
         <div class="card-body">
             <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="ad">Kovan Adı *</label>
                     <input type="text" id="ad" name="ad" class="form-control"

@@ -8,7 +8,8 @@ import sqlite3
 import os
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ali_baba.db')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.environ.get('ALI_BABA_DB_PATH', os.path.join(BASE_DIR, 'ali_baba.db'))
 
 
 def get_db():
@@ -35,7 +36,7 @@ def create_tables():
             ulasim_notu TEXT,
             genel_not TEXT,
             fotograf_yolu TEXT,
-            aktif INTEGER DEFAULT 1,
+            aktif INTEGER DEFAULT 1 CHECK (aktif IN (0, 1)),
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
         )
@@ -60,17 +61,17 @@ def create_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             arilik_id INTEGER NOT NULL,
             kovan_no TEXT NOT NULL,
-            sira_no INTEGER DEFAULT 1,
-            konum_no INTEGER DEFAULT 1,
-            ana_ari_yili INTEGER,
-            kat_sayisi INTEGER DEFAULT 1,
-            cerceve_sayisi INTEGER DEFAULT 10,
+            sira_no INTEGER DEFAULT 1 CHECK (sira_no BETWEEN 1 AND 50),
+            konum_no INTEGER DEFAULT 1 CHECK (konum_no BETWEEN 1 AND 50),
+            ana_ari_yili INTEGER CHECK (ana_ari_yili IS NULL OR ana_ari_yili BETWEEN 2000 AND 2100),
+            kat_sayisi INTEGER DEFAULT 1 CHECK (kat_sayisi BETWEEN 1 AND 10),
+            cerceve_sayisi INTEGER DEFAULT 10 CHECK (cerceve_sayisi BETWEEN 1 AND 50),
             durum TEXT DEFAULT 'Orta',
             son_kontrol_tarihi TEXT,
             genel_not TEXT,
             fotograf_yolu TEXT,
             qr_kod_yolu TEXT,
-            aktif INTEGER DEFAULT 1,
+            aktif INTEGER DEFAULT 1 CHECK (aktif IN (0, 1)),
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (arilik_id) REFERENCES apiaries(id) ON DELETE CASCADE
@@ -98,6 +99,15 @@ def create_tables():
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (kovan_id) REFERENCES fixed_hives(id) ON DELETE CASCADE
         )
+    ''')
+
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fixed_hives_apiary_kovan_no
+        ON fixed_hives (arilik_id, kovan_no COLLATE NOCASE)
+    ''')
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fixed_hives_apiary_position
+        ON fixed_hives (arilik_id, sira_no, konum_no)
     ''')
 
     conn.commit()

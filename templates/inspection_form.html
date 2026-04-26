@@ -14,6 +14,7 @@
     <div class="card">
         <div class="card-body">
             <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="kontrol_tarihi">Kontrol Tarihi</label>
                     <input type="date" id="kontrol_tarihi" name="kontrol_tarihi" class="form-control"

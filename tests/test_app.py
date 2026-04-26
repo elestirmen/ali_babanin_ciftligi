@@ -1,8 +1,12 @@
+from io import BytesIO
 import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+
+from PIL import Image
+from werkzeug.datastructures import FileStorage
 
 
 _tmp = tempfile.TemporaryDirectory()
@@ -10,6 +14,7 @@ _base = Path(_tmp.name)
 os.environ['ALI_BABA_DB_PATH'] = str(_base / 'test.db')
 os.environ['ALI_BABA_UPLOAD_FOLDER'] = str(_base / 'uploads')
 os.environ['ALI_BABA_QR_FOLDER'] = str(_base / 'qrcodes')
+os.environ['ALI_BABA_PUBLIC_UPLOAD_FOLDER'] = str(_base / 'public_uploads')
 os.environ['ALI_BABA_SECRET_KEY'] = 'test-secret'
 os.environ['ALI_BABA_PASSWORD'] = 'alibaba'
 
@@ -28,6 +33,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
             db_path.unlink()
         Path(app_module.UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
         Path(app_module.QR_FOLDER).mkdir(parents=True, exist_ok=True)
+        Path(app_module.PUBLIC_UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
         init_db.DB_PATH = app_module.DB_PATH
         init_db.create_tables()
         app_module.app.config.update(TESTING=True)
@@ -174,6 +180,58 @@ class AppSecurityAndValidationTests(unittest.TestCase):
             app_module.PUBLIC_URL = previous_public_url
 
         self.assertEqual(url, 'https://alibaba.urgup.keenetic.link/fixed-hives/7')
+
+    def test_private_media_requires_login_and_public_media_is_open(self):
+        private_file = Path(app_module.UPLOAD_FOLDER) / 'private.txt'
+        public_file = Path(app_module.PUBLIC_UPLOAD_FOLDER) / 'public.txt'
+        private_file.write_text('private', encoding='utf-8')
+        public_file.write_text('public', encoding='utf-8')
+
+        response = self.client.get('/public-media/public.txt')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'public')
+        response.close()
+
+        response = self.client.get('/media/uploads/private.txt')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response.headers['Location'])
+
+        self.login()
+        response = self.client.get('/media/uploads/private.txt')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b'private')
+        response.close()
+
+    def test_invalid_public_post_upload_does_not_create_record(self):
+        token = self.login()
+        response = self.client.post('/admin/posts/new', data={
+            'csrf_token': token,
+            'baslik': 'Gecersiz fotograf',
+            'kategori': 'Duyuru',
+            'icerik': 'Bu kayit olusmamali.',
+            'yayin_tarihi': '2026-04-26',
+            'yayinla': 'on',
+            'fotograf': (BytesIO(b'not an image'), 'bad.jpg'),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.count_rows('public_posts'), 0)
+
+    def test_saved_uploads_are_rewritten_without_exif(self):
+        image = Image.new('RGB', (4, 4), color='white')
+        exif = Image.Exif()
+        exif[271] = 'Test Camera'
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG', exif=exif.tobytes())
+        buffer.seek(0)
+
+        with app_module.app.test_request_context('/'):
+            path = app_module.save_upload(FileStorage(stream=buffer, filename='photo.jpg'))
+
+        self.assertIsNotNone(path)
+        saved_path = app_module.media_abs_path(path)
+        with Image.open(saved_path) as saved:
+            self.assertEqual(dict(saved.getexif()), {})
 
     def test_admin_hives_table_and_quick_updates(self):
         token = self.login()

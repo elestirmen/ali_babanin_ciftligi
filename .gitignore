@@ -13,12 +13,16 @@ ENV/
 # Flask / local environment
 .env
 .env.*
+!.env.example
 instance/
 
 # Local database and generated runtime files
 *.db
 *.sqlite
 *.sqlite3
+uploads/
+qrcodes/
+public_uploads/
 static/uploads/
 static/qrcodes/
 

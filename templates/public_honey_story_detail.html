@@ -14,7 +14,7 @@
 
     {% if story.fotograf_yolu %}
         <div class="photo-container">
-            <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+            <img src="{{ media_url(story.fotograf_yolu) }}" alt="{{ story.baslik }}">
         </div>
     {% endif %}
 

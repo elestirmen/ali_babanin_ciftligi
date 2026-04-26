@@ -10,15 +10,17 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
     && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN mkdir -p /data /app/static/uploads /app/static/qrcodes
+RUN mkdir -p /data /data/uploads /data/qrcodes /data/public_uploads
 
 ENV ALI_BABA_HOST=0.0.0.0 \
     ALI_BABA_PORT=51847 \
     ALI_BABA_DEBUG=0 \
     ALI_BABA_DB_PATH=/data/ali_baba.db \
-    ALI_BABA_UPLOAD_FOLDER=/app/static/uploads \
-    ALI_BABA_QR_FOLDER=/app/static/qrcodes \
-    ALI_BABA_PROXY_FIX=1
+    ALI_BABA_UPLOAD_FOLDER=/data/uploads \
+    ALI_BABA_QR_FOLDER=/data/qrcodes \
+    ALI_BABA_PUBLIC_UPLOAD_FOLDER=/data/public_uploads \
+    ALI_BABA_PROXY_FIX=1 \
+    ALI_BABA_REQUIRE_SECURE_PASSWORD=1
 
 EXPOSE 51847
 

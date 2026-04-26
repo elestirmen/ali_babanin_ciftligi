@@ -16,7 +16,7 @@
             {% for story in stories %}
                 <a href="{{ url_for('public_honey_story_detail', id=story.id) }}" class="story-card story-card-wide">
                     {% if story.fotograf_yolu %}
-                        <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+                        <img src="{{ media_url(story.fotograf_yolu) }}" alt="{{ story.baslik }}">
                     {% endif %}
                     <div>
                         <span>{{ story.hasat_donemi or story.yayin_tarihi|format_date }}</span>

@@ -38,7 +38,7 @@
     <!-- Fotoğraf -->
     {% if hive.fotograf_yolu %}
         <div class="photo-container">
-            <img src="{{ url_for('static', filename=hive.fotograf_yolu) }}" alt="{{ hive.kovan_no }}">
+            <img src="{{ media_url(hive.fotograf_yolu) }}" alt="{{ hive.kovan_no }}">
         </div>
     {% endif %}
 

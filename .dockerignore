@@ -12,6 +12,9 @@ __pycache__
 .env
 .env.*
 instance
+uploads
+qrcodes
+public_uploads
 static/uploads
 static/qrcodes
 *.log

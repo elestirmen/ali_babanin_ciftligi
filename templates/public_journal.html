@@ -24,7 +24,7 @@
             {% for post in posts %}
                 <article class="journal-card journal-card-wide">
                     {% if post.fotograf_yolu %}
-                        <img src="{{ url_for('static', filename=post.fotograf_yolu) }}" alt="{{ post.baslik }}">
+                        <img src="{{ media_url(post.fotograf_yolu) }}" alt="{{ post.baslik }}">
                     {% endif %}
                     <div class="journal-card-body">
                         <span>{{ post.kategori }} • {{ post.yayin_tarihi|format_date }}</span>

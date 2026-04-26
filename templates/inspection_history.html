@@ -65,7 +65,7 @@
                 {% endif %}
                 {% if insp.fotograf_yolu %}
                     <div class="mt-1">
-                        <img src="{{ url_for('static', filename=insp.fotograf_yolu) }}" alt="Kontrol fotoğrafı"
+                        <img src="{{ media_url(insp.fotograf_yolu) }}" alt="Kontrol fotoğrafı"
                              style="max-width:200px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
                     </div>
                 {% endif %}

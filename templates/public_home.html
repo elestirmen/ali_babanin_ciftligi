@@ -70,7 +70,7 @@
                     {% for post in latest_posts %}
                         <article class="journal-card">
                             {% if post.fotograf_yolu %}
-                                <img src="{{ url_for('static', filename=post.fotograf_yolu) }}" alt="{{ post.baslik }}">
+                                <img src="{{ media_url(post.fotograf_yolu) }}" alt="{{ post.baslik }}">
                             {% endif %}
                             <div class="journal-card-body">
                                 <span>{{ post.kategori }} • {{ post.yayin_tarihi|format_date }}</span>
@@ -225,7 +225,7 @@
                     {% for story in latest_stories %}
                         <a href="{{ url_for('public_honey_story_detail', id=story.id) }}" class="story-card">
                             {% if story.fotograf_yolu %}
-                                <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+                                <img src="{{ media_url(story.fotograf_yolu) }}" alt="{{ story.baslik }}">
                             {% endif %}
                             <div>
                                 <span>{{ story.hasat_donemi or story.yayin_tarihi|format_date }}</span>

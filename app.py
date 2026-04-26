@@ -10,10 +10,10 @@ import uuid
 from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, jsonify, session, abort)
+                   flash, jsonify, session, abort, send_from_directory)
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
 import qrcode
 
@@ -27,11 +27,17 @@ if os.environ.get('ALI_BABA_PROXY_FIX', '0') == '1':
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('ALI_BABA_DB_PATH', os.path.join(BASE_DIR, 'ali_baba.db'))
 UPLOAD_FOLDER = os.environ.get('ALI_BABA_UPLOAD_FOLDER',
-                               os.path.join(BASE_DIR, 'static', 'uploads'))
+                               os.path.join(BASE_DIR, 'uploads'))
 QR_FOLDER = os.environ.get('ALI_BABA_QR_FOLDER',
-                           os.path.join(BASE_DIR, 'static', 'qrcodes'))
+                           os.path.join(BASE_DIR, 'qrcodes'))
+PUBLIC_UPLOAD_FOLDER = os.environ.get('ALI_BABA_PUBLIC_UPLOAD_FOLDER',
+                                      os.path.join(BASE_DIR, 'public_uploads'))
 PUBLIC_URL = os.environ.get('ALI_BABA_PUBLIC_URL', '').rstrip('/')
 APP_PASSWORD = os.environ.get('ALI_BABA_PASSWORD', 'alibaba')
+if os.environ.get('ALI_BABA_REQUIRE_SECURE_PASSWORD', '0') == '1':
+    insecure_passwords = {'alibaba', 'change-me', 'password', 'admin'}
+    if APP_PASSWORD.strip().lower() in insecure_passwords:
+        raise RuntimeError('ALI_BABA_PASSWORD guclu bir parola olarak ayarlanmalidir.')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
 ASSET_VERSION = os.environ.get('ALI_BABA_ASSET_VERSION')
@@ -54,11 +60,13 @@ if not ASSET_VERSION:
 app.secret_key = os.environ.get('ALI_BABA_SECRET_KEY') or secrets.token_hex(32)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['QR_FOLDER'] = QR_FOLDER
+app.config['PUBLIC_UPLOAD_FOLDER'] = PUBLIC_UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 # Klasorleri olustur
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(QR_FOLDER, exist_ok=True)
+os.makedirs(PUBLIC_UPLOAD_FOLDER, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Durum secenekleri
@@ -109,6 +117,7 @@ PUBLIC_ENDPOINTS = {
     'offline',
     'manifest',
     'service_worker',
+    'public_upload',
 }
 
 
@@ -134,9 +143,44 @@ def build_public_url(endpoint, **values):
     return request.host_url.rstrip('/') + path
 
 
+def normalize_media_path(value):
+    """Veritabaninda saklanan medya yolunu tek bicime getirir."""
+    return (value or '').replace('\\', '/').lstrip('/')
+
+
+def media_url(value):
+    """Medya yolunu uygun public veya auth kontrollu URL'e cevirir."""
+    path = normalize_media_path(value)
+    if path.startswith('uploads/'):
+        return url_for('private_upload', filename=path.removeprefix('uploads/'))
+    if path.startswith('qrcodes/'):
+        return url_for('private_qrcode', filename=path.removeprefix('qrcodes/'))
+    if path.startswith('public_uploads/'):
+        return url_for('public_upload', filename=path.removeprefix('public_uploads/'))
+    return url_for('static', filename=path)
+
+
+def media_abs_path(value):
+    """Medya yolunun diskteki karsiligini dondurur."""
+    path = normalize_media_path(value)
+    if path.startswith('uploads/'):
+        return os.path.join(UPLOAD_FOLDER, path.removeprefix('uploads/'))
+    if path.startswith('qrcodes/'):
+        return os.path.join(QR_FOLDER, path.removeprefix('qrcodes/'))
+    if path.startswith('public_uploads/'):
+        return os.path.join(PUBLIC_UPLOAD_FOLDER, path.removeprefix('public_uploads/'))
+    return os.path.join(BASE_DIR, 'static', path)
+
+
 @app.before_request
 def require_login_and_csrf():
     """Statik dosyalar ve login disinda tum sayfalari basit sifreyle korur."""
+    if request.endpoint == 'static':
+        filename = normalize_media_path((request.view_args or {}).get('filename'))
+        if filename.startswith(('uploads/', 'qrcodes/')) and not session.get('authenticated'):
+            abort(404)
+        return None
+
     if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint is None:
         return None
 
@@ -345,53 +389,103 @@ def verify_image(filepath):
     Gecerliyse True, degilse False dondurur.
     """
     try:
-        img = Image.open(filepath)
-        img.verify()
+        with Image.open(filepath) as img:
+            img.verify()
         return True
     except Exception:
         return False
 
 
-def save_upload(file):
+def rewrite_image_without_metadata(filepath, ext):
+    """
+    Yuklenen gorseli yeniden kaydederek EXIF/GPS gibi metadata bilgisini temizler.
+    """
+    format_map = {
+        'jpg': 'JPEG',
+        'jpeg': 'JPEG',
+        'png': 'PNG',
+        'webp': 'WEBP',
+    }
+    image_format = format_map.get(ext)
+    if not image_format:
+        return False
+
+    try:
+        with Image.open(filepath) as img:
+            img.load()
+            img = ImageOps.exif_transpose(img)
+            if image_format == 'JPEG' and img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            elif image_format in {'PNG', 'WEBP'} and img.mode == 'P':
+                img = img.convert('RGBA')
+
+            save_kwargs = {}
+            if image_format in {'JPEG', 'WEBP'}:
+                save_kwargs.update({'quality': 88, 'optimize': True})
+            elif image_format == 'PNG':
+                save_kwargs.update({'optimize': True})
+
+            img.save(filepath, format=image_format, **save_kwargs)
+        return True
+    except Exception:
+        return False
+
+
+def save_upload_with_gps(file, public=False):
     """
     Yuklenen dosyayi kaydeder.
     - secure_filename ile dosya adini temizler.
     - Uzantiyi kontrol eder.
-    - Pillow ile gercek goruntu dogrulamasi yapar.
+    - Pillow ile gercek goruntu dogrulamasi yapar ve metadata bilgisini temizler.
     - Benzersiz isim verir.
-    Donus: dosya yolu (relative to static) veya None.
+    Donus: (medya yolu, exif_lat, exif_lng) veya (None, None, None).
     Hata durumunda flash mesaji gonderir.
     """
     if not file or not file.filename:
-        return None
+        return None, None, None
 
     # secure_filename ile guvenli ad olustur
     safe_name = secure_filename(file.filename)
     if not safe_name or not allowed_file(safe_name):
         flash('Gecersiz dosya formati. Sadece JPG, JPEG, PNG, WEBP kabul edilir.', 'error')
-        return None
+        return None, None, None
 
     ext = safe_name.rsplit('.', 1)[1].lower()
     unique_name = f"{uuid.uuid4().hex}.{ext}"
-    filepath = os.path.join(UPLOAD_FOLDER, unique_name)
+    target_folder = PUBLIC_UPLOAD_FOLDER if public else UPLOAD_FOLDER
+    relative_prefix = 'public_uploads' if public else 'uploads'
+    filepath = os.path.join(target_folder, unique_name)
 
     try:
         file.save(filepath)
     except Exception:
         flash('Dosya kaydedilirken bir hata olustu.', 'error')
-        return None
+        return None, None, None
 
-    # Pillow ile gercek goruntu mu kontrol et
     if not verify_image(filepath):
-        # Gecersiz dosyayi sil
         try:
             os.remove(filepath)
         except OSError:
             pass
         flash('Yuklenen dosya gecerli bir goruntu degil.', 'error')
-        return None
+        return None, None, None
 
-    return f"uploads/{unique_name}"
+    exif_lat, exif_lng = get_exif_gps(filepath)
+    if not rewrite_image_without_metadata(filepath, ext):
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+        flash('Yuklenen gorsel islenirken bir hata olustu.', 'error')
+        return None, None, None
+
+    return f"{relative_prefix}/{unique_name}", exif_lat, exif_lng
+
+
+def save_upload(file, public=False):
+    """Yuklenen gorseli kaydeder ve sadece medya yolunu dondurur."""
+    path, _, _ = save_upload_with_gps(file, public=public)
+    return path
 
 
 def get_exif_gps(filepath):
@@ -400,8 +494,8 @@ def get_exif_gps(filepath):
     Basariliysa (latitude, longitude) dondurur, yoksa (None, None).
     """
     try:
-        image = Image.open(filepath)
-        exif_data = image._getexif()
+        with Image.open(filepath) as image:
+            exif_data = image._getexif()
         if not exif_data:
             return None, None
 
@@ -514,7 +608,8 @@ def utility_processor():
         'now': datetime.now(),
         'csrf_token': csrf_token,
         'is_authenticated': session.get('authenticated', False),
-        'asset_version': ASSET_VERSION
+        'asset_version': ASSET_VERSION,
+        'media_url': media_url,
     }
 
 
@@ -722,6 +817,30 @@ def service_worker():
     return response
 
 
+@app.route('/public-media/<path:filename>')
+def public_upload(filename):
+    """Public icerik gorsellerini servis eder."""
+    return send_from_directory(PUBLIC_UPLOAD_FOLDER, filename)
+
+
+@app.route('/media/uploads/<path:filename>')
+def private_upload(filename):
+    """Kovan ve kontrol fotograflarini oturum arkasinda servis eder."""
+    if not os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
+        legacy_folder = os.path.join(BASE_DIR, 'static', 'uploads')
+        return send_from_directory(legacy_folder, filename)
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+@app.route('/media/qrcodes/<path:filename>')
+def private_qrcode(filename):
+    """QR kod dosyalarini oturum arkasinda servis eder."""
+    if not os.path.exists(os.path.join(QR_FOLDER, filename)):
+        legacy_folder = os.path.join(BASE_DIR, 'static', 'qrcodes')
+        return send_from_directory(legacy_folder, filename)
+    return send_from_directory(QR_FOLDER, filename)
+
+
 # ---------------------------------------------------------------------------
 # Admin Ana Sayfa (Harita)
 # ---------------------------------------------------------------------------
@@ -859,7 +978,18 @@ def admin_post_new():
         fotograf_yolu = None
         file = request.files.get('fotograf')
         if file and file.filename:
-            fotograf_yolu = save_upload(file)
+            fotograf_yolu = save_upload(file, public=True)
+            if not fotograf_yolu:
+                post_form = {
+                    'baslik': baslik,
+                    'kategori': kategori,
+                    'ozet': ozet,
+                    'icerik': icerik,
+                    'yayin_tarihi': yayin_tarihi or datetime.now().strftime('%Y-%m-%d'),
+                    'yayinla': yayinla,
+                }
+                return render_template('admin_post_form.html', post=post_form,
+                                       categories=PUBLIC_POST_CATEGORIES)
 
         execute_db('''
             INSERT INTO public_posts
@@ -904,9 +1034,11 @@ def admin_post_edit(id):
         fotograf_yolu = post['fotograf_yolu']
         file = request.files.get('fotograf')
         if file and file.filename:
-            new_photo = save_upload(file)
-            if new_photo:
-                fotograf_yolu = new_photo
+            new_photo = save_upload(file, public=True)
+            if not new_photo:
+                return render_template('admin_post_form.html', post=post,
+                                       categories=PUBLIC_POST_CATEGORIES)
+            fotograf_yolu = new_photo
 
         execute_db('''
             UPDATE public_posts
@@ -952,7 +1084,10 @@ def admin_honey_story_new():
         fotograf_yolu = None
         file = request.files.get('fotograf')
         if file and file.filename:
-            fotograf_yolu = save_upload(file)
+            fotograf_yolu = save_upload(file, public=True)
+            if not fotograf_yolu:
+                data['yayinla'] = 1 if request.form.get('yayinla') else 0
+                return render_template('admin_honey_story_form.html', story=data)
 
         execute_db('''
             INSERT INTO honey_stories
@@ -1001,9 +1136,10 @@ def admin_honey_story_edit(id):
         fotograf_yolu = story['fotograf_yolu']
         file = request.files.get('fotograf')
         if file and file.filename:
-            new_photo = save_upload(file)
-            if new_photo:
-                fotograf_yolu = new_photo
+            new_photo = save_upload(file, public=True)
+            if not new_photo:
+                return render_template('admin_honey_story_form.html', story=story)
+            fotograf_yolu = new_photo
 
         execute_db('''
             UPDATE honey_stories
@@ -1187,7 +1323,7 @@ def api_map_data():
             continue
         foto = None
         if s['fotograf_yolu']:
-            foto = url_for('static', filename=s['fotograf_yolu'])
+            foto = media_url(s['fotograf_yolu'])
         data['swarm_hives'].append({
             'id': s['id'],
             'ad': s['ad'],
@@ -1303,11 +1439,11 @@ def swarm_new():
         fotograf_yolu = None
         file = request.files.get('fotograf')
         if file and file.filename:
-            fotograf_yolu = save_upload(file)
+            fotograf_yolu, exif_lat, exif_lng = save_upload_with_gps(file)
+            if not fotograf_yolu:
+                return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
             # EXIF GPS kontrol (sadece koordinat girilmediyse)
-            if fotograf_yolu and (not latitude_str or not longitude_str):
-                abs_path = os.path.join(BASE_DIR, 'static', fotograf_yolu)
-                exif_lat, exif_lng = get_exif_gps(abs_path)
+            if not latitude_str or not longitude_str:
                 if exif_lat is not None and exif_lng is not None:
                     latitude_str = str(exif_lat)
                     longitude_str = str(exif_lng)
@@ -1384,18 +1520,17 @@ def swarm_edit(id):
         fotograf_yolu = hive['fotograf_yolu']
         file = request.files.get('fotograf')
         if file and file.filename:
-            new_foto = save_upload(file)
-            if new_foto:
-                fotograf_yolu = new_foto
-                if not latitude_str or not longitude_str:
-                    abs_path = os.path.join(BASE_DIR, 'static', fotograf_yolu)
-                    exif_lat, exif_lng = get_exif_gps(abs_path)
-                    if exif_lat is not None and exif_lng is not None:
-                        latitude_str = str(exif_lat)
-                        longitude_str = str(exif_lng)
-                        flash('GPS bilgisi fotograftan otomatik alindi.', 'success')
-                    else:
-                        flash('Fotografta GPS bilgisi bulunamadi.', 'info')
+            new_foto, exif_lat, exif_lng = save_upload_with_gps(file)
+            if not new_foto:
+                return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+            fotograf_yolu = new_foto
+            if not latitude_str or not longitude_str:
+                if exif_lat is not None and exif_lng is not None:
+                    latitude_str = str(exif_lat)
+                    longitude_str = str(exif_lng)
+                    flash('GPS bilgisi fotograftan otomatik alindi.', 'success')
+                else:
+                    flash('Fotografta GPS bilgisi bulunamadi.', 'info')
 
         # Koordinat dogrulama
         lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
@@ -1584,6 +1719,9 @@ def fixed_hive_new(apiary_id):
         file = request.files.get('fotograf')
         if file and file.filename:
             fotograf_yolu = save_upload(file)
+            if not fotograf_yolu:
+                return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
+                                       statuses=FIXED_HIVE_STATUSES, edit=False)
 
         execute_db('''
             INSERT INTO fixed_hives (arilik_id, kovan_no, sira_no, konum_no, ana_ari_yili,
@@ -1679,8 +1817,10 @@ def fixed_hive_edit(id):
         file = request.files.get('fotograf')
         if file and file.filename:
             new_foto = save_upload(file)
-            if new_foto:
-                fotograf_yolu = new_foto
+            if not new_foto:
+                return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
+                                       statuses=FIXED_HIVE_STATUSES, edit=True)
+            fotograf_yolu = new_foto
 
         execute_db('''
             UPDATE fixed_hives SET kovan_no=?, sira_no=?, konum_no=?, ana_ari_yili=?,
@@ -1712,7 +1852,7 @@ def fixed_hive_qr(id):
         return redirect(url_for('apiary_list'))
 
     qr_path = hive['qr_kod_yolu'] or f"qrcodes/qr_hive_{id}.png"
-    qr_abs_path = os.path.join(BASE_DIR, 'static', qr_path)
+    qr_abs_path = media_abs_path(qr_path)
     if not hive['qr_kod_yolu'] or not os.path.exists(qr_abs_path):
         qr_path = generate_qr_code(id)
         if hive['qr_kod_yolu'] != qr_path:
@@ -1766,6 +1906,8 @@ def inspection_new(id):
         file = request.files.get('fotograf')
         if file and file.filename:
             fotograf_yolu = save_upload(file)
+            if not fotograf_yolu:
+                return render_template('inspection_form.html', hive=hive, choices=INSPECTION_CHOICES)
 
         execute_db('''
             INSERT INTO inspections (kovan_id, kontrol_tarihi, ari_yogunlugu, yavru_durumu,

@@ -59,7 +59,17 @@
         distanceLabel: null,
         control: null,
         panelEl: null,
-        hasCentered: false
+        hasCentered: false,
+        heading: null,
+        compassStatus: null,
+        orientationListenersActive: false,
+        compassTimer: null,
+        lastData: null,
+        lastUserLatLng: null,
+        mapRotationEnabled: false,
+        mapRotationActive: false,
+        mapRotationEventsActive: false,
+        renderFrame: null
     };
 
     // --- Marker renk belirleme ---
@@ -279,6 +289,26 @@
         return directions[Math.round(bearing / 45) % directions.length];
     }
 
+    function normalizeDegrees(value) {
+        return (value % 360 + 360) % 360;
+    }
+
+    function relativeDirectionLabel(angle) {
+        if (!Number.isFinite(angle)) return 'Pusula bekleniyor';
+        if (angle < 22.5 || angle >= 337.5) return 'Düz ileride';
+        if (angle < 67.5) return 'Sağ önde';
+        if (angle < 112.5) return 'Sağda';
+        if (angle < 157.5) return 'Sağ arkada';
+        if (angle < 202.5) return 'Arkada';
+        if (angle < 247.5) return 'Sol arkada';
+        if (angle < 292.5) return 'Solda';
+        return 'Sol önde';
+    }
+
+    function isCompactGuidancePanel() {
+        return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    }
+
     function createArrowIcon(bearing) {
         return L.divIcon({
             html: `<div class="guidance-arrow-inner" style="transform: rotate(${bearing}deg);">▲</div>`,
@@ -286,6 +316,85 @@
             iconSize: [38, 38],
             iconAnchor: [19, 19]
         });
+    }
+
+    function getTranslateString(point) {
+        if (L.Browser.any3d) {
+            return `translate3d(${point.x}px, ${point.y}px, 0px)`;
+        }
+        return `translate(${point.x}px, ${point.y}px)`;
+    }
+
+    function getMapPanePosition() {
+        return L.DomUtil.getPosition(map.getPane('mapPane')) || L.point(0, 0);
+    }
+
+    function setMapPaneTransform(rotation) {
+        const mapPane = map.getPane('mapPane');
+        const panePos = getMapPanePosition();
+        const mapSize = map.getSize();
+        const originX = (mapSize.x / 2) - panePos.x;
+        const originY = (mapSize.y / 2) - panePos.y;
+
+        mapPane.style.transformOrigin = `${originX}px ${originY}px`;
+        mapPane.style.transform = `${getTranslateString(panePos)} rotate(${rotation}deg)`;
+    }
+
+    function applyMapRotation() {
+        const canRotate = guidance.target && guidance.mapRotationEnabled && Number.isFinite(guidance.heading);
+        const mapEl = map.getContainer();
+
+        if (!canRotate) {
+            resetMapRotation();
+            return;
+        }
+
+        const rotation = -guidance.heading;
+        guidance.mapRotationActive = true;
+        mapEl.classList.add('map-rotating');
+        mapEl.style.setProperty('--map-counter-rotation', `${guidance.heading}deg`);
+        setMapPaneTransform(rotation);
+    }
+
+    function resetMapRotation() {
+        const mapEl = map.getContainer();
+        const mapPane = map.getPane('mapPane');
+
+        if (!guidance.mapRotationActive && !mapEl.classList.contains('map-rotating')) return;
+
+        guidance.mapRotationActive = false;
+        mapEl.classList.remove('map-rotating');
+        mapEl.style.removeProperty('--map-counter-rotation');
+        mapPane.style.transformOrigin = '';
+        mapPane.style.transform = getTranslateString(getMapPanePosition());
+    }
+
+    function setMapRotationEvents(active) {
+        if (active && !guidance.mapRotationEventsActive) {
+            map.on('move zoomend moveend viewreset resize', applyMapRotation);
+            guidance.mapRotationEventsActive = true;
+        } else if (!active && guidance.mapRotationEventsActive) {
+            map.off('move zoomend moveend viewreset resize', applyMapRotation);
+            guidance.mapRotationEventsActive = false;
+        }
+    }
+
+    function scheduleGuidanceRender() {
+        if (guidance.renderFrame) return;
+        guidance.renderFrame = window.requestAnimationFrame(function () {
+            guidance.renderFrame = null;
+            applyMapRotation();
+            renderGuidancePanel(guidance.lastData);
+        });
+    }
+
+    function toggleMapRotation() {
+        guidance.mapRotationEnabled = !guidance.mapRotationEnabled;
+        if (guidance.mapRotationEnabled && guidance.lastUserLatLng && Number.isFinite(guidance.heading)) {
+            map.panTo(guidance.lastUserLatLng, { animate: false });
+        }
+        applyMapRotation();
+        renderGuidancePanel(guidance.lastData);
     }
 
     function ensureGuidanceControl() {
@@ -313,6 +422,24 @@
         const accuracy = data && Number.isFinite(data.accuracy)
             ? `Konum hassasiyeti: ~${Math.round(data.accuracy)} m`
             : 'Konum izni bekleniyor';
+        const hasRelativeBearing = data && Number.isFinite(data.bearing) && Number.isFinite(guidance.heading);
+        const relativeBearing = hasRelativeBearing ? normalizeDegrees(data.bearing - guidance.heading) : null;
+        const compassHeading = Number.isFinite(guidance.heading)
+            ? `Telefon yönü: ${Math.round(guidance.heading)}° ${bearingToCompass(guidance.heading)}`
+            : (guidance.compassStatus || 'Telefon pusulası bekleniyor');
+        const compassClass = hasRelativeBearing ? '' : ' guidance-compass-waiting';
+        const compassArrowStyle = hasRelativeBearing ? `transform: rotate(${relativeBearing}deg);` : '';
+        const compassText = hasRelativeBearing
+            ? `${relativeDirectionLabel(relativeBearing)} · ${Math.round(relativeBearing)}°`
+            : 'Telefona göre yön bekleniyor';
+        const rotationActive = guidance.mapRotationEnabled && Number.isFinite(guidance.heading);
+        const compactPanel = isCompactGuidancePanel();
+        const rotationButtonText = guidance.mapRotationEnabled
+            ? (compactPanel ? 'Sabit' : 'Haritayı Sabitle')
+            : (compactPanel ? 'Döndür' : 'Haritayı Döndür');
+        const rotationStatus = rotationActive
+            ? 'Harita telefon yönüne göre dönüyor'
+            : (guidance.mapRotationEnabled ? 'Harita için pusula bekleniyor' : 'Harita kuzey sabit');
 
         guidance.panelEl.innerHTML = `
             <div class="guidance-panel-title">Kuş Uçumu</div>
@@ -321,9 +448,27 @@
                 <strong>${distance}</strong>
                 <span>${direction}</span>
             </div>
+            <div class="guidance-compass${compassClass}">
+                <div class="guidance-compass-dial" aria-hidden="true">
+                    <div class="guidance-compass-arrow" style="${compassArrowStyle}">▲</div>
+                </div>
+                <div class="guidance-compass-text">
+                    <strong>${compassText}</strong>
+                    <span>${compassHeading}</span>
+                    <span>${rotationStatus}</span>
+                </div>
+            </div>
             <div class="guidance-panel-note">${accuracy}</div>
-            <button type="button" class="guidance-stop-btn">Bitir</button>
+            <div class="guidance-panel-actions">
+                <button type="button" class="guidance-rotate-btn${guidance.mapRotationEnabled ? ' active' : ''}" aria-pressed="${guidance.mapRotationEnabled ? 'true' : 'false'}">${rotationButtonText}</button>
+                <button type="button" class="guidance-stop-btn">Bitir</button>
+            </div>
         `;
+
+        const rotateBtn = guidance.panelEl.querySelector('.guidance-rotate-btn');
+        if (rotateBtn) {
+            rotateBtn.addEventListener('click', toggleMapRotation);
+        }
 
         const stopBtn = guidance.panelEl.querySelector('.guidance-stop-btn');
         if (stopBtn) {
@@ -359,8 +504,11 @@
         stopGuidance();
         guidance.target = target;
         guidance.hasCentered = false;
+        guidance.mapRotationEnabled = true;
+        setMapRotationEvents(true);
         renderGuidancePanel(null);
         map.closePopup();
+        startCompassTracking();
 
         guidance.watchId = navigator.geolocation.watchPosition(
             updateGuidance,
@@ -395,6 +543,8 @@
             (userLatLng.lat + targetLatLng.lat) / 2,
             (userLatLng.lng + targetLatLng.lng) / 2
         );
+        guidance.lastData = { distance, bearing, accuracy };
+        guidance.lastUserLatLng = userLatLng;
 
         if (!guidance.userMarker) {
             guidance.userMarker = L.circleMarker(userLatLng, {
@@ -468,14 +618,108 @@
             }));
         }
 
-        renderGuidancePanel({ distance, bearing, accuracy });
-
         if (!guidance.hasCentered) {
             map.fitBounds(L.latLngBounds([userLatLng, targetLatLng]), {
                 padding: [56, 56],
-                maxZoom: 18
+                maxZoom: 18,
+                animate: false
             });
             guidance.hasCentered = true;
+        } else if (guidance.mapRotationEnabled && Number.isFinite(guidance.heading)) {
+            map.panTo(userLatLng, { animate: false });
+        }
+
+        applyMapRotation();
+        renderGuidancePanel({ distance, bearing, accuracy });
+    }
+
+    function getScreenOrientationAngle() {
+        if (window.screen && window.screen.orientation && Number.isFinite(window.screen.orientation.angle)) {
+            return window.screen.orientation.angle;
+        }
+        if (Number.isFinite(window.orientation)) {
+            return window.orientation;
+        }
+        return 0;
+    }
+
+    function getCompassHeading(event) {
+        if (Number.isFinite(event.webkitCompassHeading)) {
+            return normalizeDegrees(event.webkitCompassHeading);
+        }
+        if (Number.isFinite(event.alpha) && (event.absolute || event.type === 'deviceorientationabsolute')) {
+            return normalizeDegrees(360 - event.alpha + getScreenOrientationAngle());
+        }
+        return null;
+    }
+
+    function handleDeviceOrientation(event) {
+        if (!guidance.target) return;
+
+        const heading = getCompassHeading(event);
+        if (!Number.isFinite(heading)) return;
+
+        guidance.heading = heading;
+        guidance.compassStatus = 'Telefon pusulası aktif';
+        if (guidance.compassTimer) {
+            window.clearTimeout(guidance.compassTimer);
+            guidance.compassTimer = null;
+        }
+        scheduleGuidanceRender();
+    }
+
+    function addCompassListeners() {
+        if (guidance.orientationListenersActive) return;
+        window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+        guidance.orientationListenersActive = true;
+        guidance.compassStatus = 'Telefon pusulası dinleniyor';
+        renderGuidancePanel(guidance.lastData);
+        guidance.compassTimer = window.setTimeout(function () {
+            if (!guidance.target || Number.isFinite(guidance.heading)) return;
+            guidance.compassStatus = 'Pusula verisi alınamadı; HTTPS veya sensör desteği gerekebilir';
+            renderGuidancePanel(guidance.lastData);
+        }, 3000);
+    }
+
+    function startCompassTracking() {
+        if (typeof window.DeviceOrientationEvent === 'undefined') {
+            guidance.compassStatus = 'Bu tarayıcı telefon pusulası verisi sunmuyor';
+            renderGuidancePanel(guidance.lastData);
+            return;
+        }
+
+        if (typeof window.DeviceOrientationEvent.requestPermission === 'function') {
+            window.DeviceOrientationEvent.requestPermission()
+                .then(function (state) {
+                    if (!guidance.target) return;
+                    if (state === 'granted') {
+                        addCompassListeners();
+                    } else {
+                        guidance.compassStatus = 'Telefon pusulası izni verilmedi';
+                        renderGuidancePanel(guidance.lastData);
+                    }
+                })
+                .catch(function () {
+                    if (!guidance.target) return;
+                    guidance.compassStatus = 'Telefon pusulası başlatılamadı';
+                    renderGuidancePanel(guidance.lastData);
+                });
+            return;
+        }
+
+        addCompassListeners();
+    }
+
+    function stopCompassTracking() {
+        if (guidance.compassTimer) {
+            window.clearTimeout(guidance.compassTimer);
+            guidance.compassTimer = null;
+        }
+        if (guidance.orientationListenersActive) {
+            window.removeEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+            window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+            guidance.orientationListenersActive = false;
         }
     }
 
@@ -483,6 +727,13 @@
         if (guidance.watchId !== null && navigator.geolocation) {
             navigator.geolocation.clearWatch(guidance.watchId);
         }
+        stopCompassTracking();
+        setMapRotationEvents(false);
+        if (guidance.renderFrame) {
+            window.cancelAnimationFrame(guidance.renderFrame);
+            guidance.renderFrame = null;
+        }
+        resetMapRotation();
 
         ['userMarker', 'accuracyCircle', 'line', 'arrowMarker', 'distanceLabel'].forEach(function (key) {
             if (guidance[key]) {
@@ -504,7 +755,17 @@
             distanceLabel: null,
             control: null,
             panelEl: null,
-            hasCentered: false
+            hasCentered: false,
+            heading: null,
+            compassStatus: null,
+            orientationListenersActive: false,
+            compassTimer: null,
+            lastData: null,
+            lastUserLatLng: null,
+            mapRotationEnabled: false,
+            mapRotationActive: false,
+            mapRotationEventsActive: false,
+            renderFrame: null
         };
     }
 

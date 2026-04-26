@@ -9,12 +9,14 @@ Köy arazisine koyduğumuz oğul yakalama kovanlarını ve mevcut arılıktaki s
 ### 🏕️ Oğul Kovanları
 - Oğul yakalama kovanlarını haritada takip
 - GPS konumu otomatik alma (fotoğraftan EXIF veya tarayıcıdan)
+- Haritadan tıklayarak konum seçme
 - Durum takibi (Boş, Arı hareketi var, Oğul girdi, vb.)
 - Fotoğraf yükleme
 - Ulaşım notları
 
 ### 🏠 Sabit Arılıklar ve Kovanlar
 - Arılık alanlarını kaydetme
+- Arılık konumunu haritadan seçme
 - Her arılığa bağlı sabit kovanları yönetme
 - Arılık krokisi görünümü (grid layout)
 - QR kod üretimi (kovan detayına hızlı erişim)
@@ -33,6 +35,7 @@ Köy arazisine koyduğumuz oğul yakalama kovanlarını ve mevcut arılıktaki s
 
 ### 🗺️ Harita
 - Tüm kovanlar Leaflet haritasında
+- Standart, uydu, topografya ve açık ton harita katmanları
 - Katman kontrolü (oğul kovanları, sabit arılıklar, kontrol gerekenler, pasifler)
 - Duruma göre renkli markerlar
 - Google Maps ile yol tarifi

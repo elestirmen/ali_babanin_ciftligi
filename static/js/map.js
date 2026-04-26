@@ -20,11 +20,33 @@
     // Zoom kontrolunu sol alta koy
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-    // OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const standardLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
-    }).addTo(map);
+    });
+
+    const satelliteLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+            attribution: 'Tiles &copy; Esri',
+            maxZoom: 19
+        }
+    );
+
+    const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors, SRTM | &copy; OpenTopoMap',
+        maxZoom: 17
+    });
+
+    const lightLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            maxZoom: 20
+        }
+    );
+
+    standardLayer.addTo(map);
 
     // --- Marker renk belirleme ---
     function getSwarmColor(durum, aktif, overdue) {
@@ -230,6 +252,13 @@
     Object.values(layers).forEach(layer => layer.addTo(map));
 
     // Layer kontrolu
+    const baseMaps = {
+        'Standart': standardLayer,
+        'Uydu': satelliteLayer,
+        'Topografya': topoLayer,
+        'Açık Ton': lightLayer
+    };
+
     const overlayMaps = {
         '🏕️ Oğul Kovanları': layers.swarmHives,
         '🏠 Sabit Arılıklar': layers.apiaries,
@@ -237,7 +266,7 @@
         '🔇 Pasifler': layers.pasifler
     };
 
-    L.control.layers(null, overlayMaps, {
+    L.control.layers(baseMaps, overlayMaps, {
         position: 'topright',
         collapsed: true
     }).addTo(map);

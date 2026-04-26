@@ -558,6 +558,26 @@ textarea.form-control {
     font-weight: 500;
 }
 
+.location-picker-map {
+    width: 100%;
+    height: 280px;
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-input);
+    box-shadow: var(--shadow-sm);
+}
+
+.location-picker-map .leaflet-control-layers {
+    font-size: 0.8rem;
+}
+
+@media (max-width: 480px) {
+    .location-picker-map {
+        height: 240px;
+    }
+}
+
 /* --- Fotoğraf yükleme --- */
 .file-input-wrapper {
     position: relative;

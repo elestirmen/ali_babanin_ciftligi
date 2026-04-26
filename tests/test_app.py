@@ -64,6 +64,19 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         response = self.client.post('/apiaries/new', data={'arilik_adi': 'Test'})
         self.assertEqual(response.status_code, 400)
 
+    def test_location_picker_is_rendered_on_coordinate_forms(self):
+        self.login()
+
+        response = self.client.get('/swarm-hives/new')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'locationPickerMap', response.data)
+        self.assertIn(b'js/location_picker.js', response.data)
+
+        response = self.client.get('/apiaries/new')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'locationPickerMap', response.data)
+        self.assertIn(b'js/location_picker.js', response.data)
+
     def test_invalid_swarm_status_is_rejected(self):
         token = self.login()
         response = self.client.post('/swarm-hives/new', data={

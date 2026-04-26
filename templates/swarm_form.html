@@ -40,6 +40,13 @@
                     <div class="hint" id="locationStatus"></div>
                 </div>
 
+                <div class="form-group">
+                    <label for="locationPickerMap">Haritadan Konum Seç</label>
+                    <div id="locationPickerMap" class="location-picker-map"
+                         data-default-lat="{{ hive.latitude if hive and hive.latitude else 38.63 }}"
+                         data-default-lng="{{ hive.longitude if hive and hive.longitude else 34.82 }}"></div>
+                </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="kurulum_tarihi">Kurulum Tarihi</label>
@@ -112,29 +119,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
-    document.getElementById('btnGetLocation').addEventListener('click', function() {
-        var statusEl = document.getElementById('locationStatus');
-        if (!navigator.geolocation) {
-            statusEl.textContent = '❌ Tarayıcınız konum desteği sunmuyor.';
-            return;
-        }
-        statusEl.textContent = '📍 Konum alınıyor...';
-        this.disabled = true;
-        var self = this;
-        navigator.geolocation.getCurrentPosition(
-            function(pos) {
-                document.getElementById('latitude').value = pos.coords.latitude.toFixed(6);
-                document.getElementById('longitude').value = pos.coords.longitude.toFixed(6);
-                statusEl.textContent = '✅ Konum alındı!';
-                self.disabled = false;
-            },
-            function(err) {
-                statusEl.textContent = '❌ Konum alınamadı: ' + err.message;
-                self.disabled = false;
-            },
-            { enableHighAccuracy: true, timeout: 15000 }
-        );
-    });
-</script>
+<script src="{{ url_for('static', filename='js/location_picker.js') }}"></script>
 {% endblock %}

@@ -9,56 +9,235 @@
         <div class="public-hero-content">
             <p class="public-kicker">Ürgüp ve Karlık köyü çevresinde küçük ölçekli arıcılık</p>
             <h1>Ali Baba'nın Çiftliği</h1>
-            <p>Arıların mevsim ritmini, Kapadokya florasını ve kovan bakımında nelere dikkat edildiğini sade bir dille anlatan arıcılık günlüğü.</p>
+            <p>Kapadokya'da arıların yıl içindeki ritmini, balın kovandan sofraya gelişini ve kovan bakımında nelere bakıldığını anlaşılır şekilde anlatan arıcılık rehberi.</p>
             <div class="public-actions">
-                <a href="{{ url_for('public_message') }}" class="btn btn-accent">Mesaj Bırak</a>
+                <a href="#aylik-rehber" class="btn btn-accent">Aylık Rehbere Bak</a>
+                <a href="{{ url_for('public_message') }}" class="btn btn-light">Mesaj Bırak</a>
                 {% if is_authenticated %}
                     <a href="{{ url_for('index') }}" class="btn btn-light">Panele Git</a>
-                {% else %}
-                    <a href="{{ url_for('login') }}" class="btn btn-light">Admin Girişi</a>
                 {% endif %}
             </div>
+        </div>
+    </section>
+
+    <section class="public-band public-band-compact">
+        <div class="public-inner">
+            <nav class="public-quick-nav" aria-label="Sayfa bölümleri">
+                <a href="#aylik-rehber">Aylık Rehber</a>
+                <a href="#kovan-kontrolu">Kovan Kontrolü</a>
+                <a href="#flora">Flora</a>
+                <a href="#bal">Bal ve Ürünler</a>
+                <a href="#ziyaret">Ziyaret</a>
+                <a href="#sss">SSS</a>
+            </nav>
         </div>
     </section>
 
     <section class="public-band">
         <div class="public-inner">
             <div class="public-section-heading">
-                <h2>Bu Sayfada Ne Var?</h2>
-                <p>Kovan konumları güvenlik nedeniyle paylaşılmaz; burada arıcılığı anlamaya yarayan genel bilgiler ve anonim çiftlik özeti bulunur.</p>
+                <h2>Bu Site Nasıl Kullanılır?</h2>
+                <p>Bu sayfa ziyaretçiler içindir. Arılık noktaları ve kovan konumları güvenlik nedeniyle gösterilmez; bunun yerine arıcılık sürecini anlamaya yarayan pratik bilgiler paylaşılır.</p>
             </div>
             <div class="public-grid public-grid-3">
                 <article class="info-card">
-                    <div class="info-icon">🌿</div>
-                    <h3>Kapadokya Florası</h3>
-                    <p>Bağ çevresi, kır çiçekleri, kekik benzeri aromatik bitkiler ve mevsimsel çiçeklenme arıların çalışma düzenini belirler.</p>
+                    <div class="info-icon">📅</div>
+                    <h3>Mevsimi Anlayın</h3>
+                    <p>Ay seçerek o dönemde kolonide hangi işaretlere bakıldığını, hangi işlerin öne çıktığını ve hangi risklerin arttığını görebilirsiniz.</p>
                 </article>
                 <article class="info-card">
-                    <div class="info-icon">🍯</div>
-                    <h3>Balın Yolculuğu</h3>
-                    <p>Nektarın kovana taşınması, petekte olgunlaşması ve hasat zamanının doğru seçilmesi bal kalitesinin temelidir.</p>
+                    <div class="info-icon">🔎</div>
+                    <h3>Kovan Kontrolünü Okuyun</h3>
+                    <p>Ana arı, yavru düzeni, bal-polen dengesi, sakinlik ve hastalık belirtisi gibi temel gözlemlerin ne anlama geldiğini öğrenebilirsiniz.</p>
                 </article>
                 <article class="info-card">
-                    <div class="info-icon">📋</div>
-                    <h3>Düzenli Kontrol</h3>
-                    <p>Ana arı, yavru düzeni, bal ve polen durumu kısa notlarla izlenir; amaç erken fark etmek ve gereksiz müdahaleden kaçınmaktır.</p>
+                    <div class="info-icon">✉️</div>
+                    <h3>Soru Bırakın</h3>
+                    <p>Bal, arıcılık, ziyaret veya çiftlik hakkında sorularınızı mesaj formundan iletebilirsiniz. Admin girişinden mesajlar ayrıca takip edilir.</p>
                 </article>
             </div>
         </div>
     </section>
 
-    <section class="public-band public-band-muted">
+    <section id="aylik-rehber" class="public-band public-band-muted">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Aylık Arıcılık Rehberi</h2>
+                <p>Kapadokya'da rakım, gece-gündüz sıcaklık farkı ve yağış durumu işleri etkiler. Bu rehber kesin reçete değil; koloniyi gözlemlemek için pratik bir çerçevedir.</p>
+            </div>
+
+            <div class="month-guide" data-current-month="{{ now.month }}">
+                <div class="month-tabs" role="tablist" aria-label="Ay seçimi">
+                    {% for month_no, month_name in [
+                        (1, 'Oca'), (2, 'Şub'), (3, 'Mar'), (4, 'Nis'), (5, 'May'), (6, 'Haz'),
+                        (7, 'Tem'), (8, 'Ağu'), (9, 'Eyl'), (10, 'Eki'), (11, 'Kas'), (12, 'Ara')
+                    ] %}
+                        <button type="button" class="month-tab {% if now.month == month_no %}active{% endif %}" data-month="{{ month_no }}">{{ month_name }}</button>
+                    {% endfor %}
+                </div>
+
+                {% set months = [
+                    (1, 'Ocak', 'Kovan huzuru korunur.', ['Uçuş deliği ve kapak çevresi dışarıdan kontrol edilir.', 'Kar, nem ve rüzgar yükü varsa kovan önü açılır.', 'Kovan gereksiz açılmaz; stok şüphesi varsa hızlı ve kısa kontrol yapılır.'], 'Soğukta uzun kontrol koloniyi gereksiz zorlar.'),
+                    (2, 'Şubat', 'Kıştan çıkış hazırlığı başlar.', ['Güneşli ve sakin günlerde uçuş gözlenir.', 'Ölü arı birikimi, nem ve fare zararı dışarıdan takip edilir.', 'Eksik ekipman ve çerçeve hazırlıkları tamamlanır.'], 'Erken teşvik beslemesi her koloni için uygun olmayabilir.'),
+                    (3, 'Mart', 'İlk gelişim işaretleri izlenir.', ['Yavru alanı, ana arı düzeni ve besin stoku kısa kontrolde değerlendirilir.', 'Zayıf koloniler ayrı takip edilir.', 'Kovan içi hacim koloni gücüne göre daraltılıp genişletilir.'], 'Gece soğukları devam ediyorsa fazla genişletme yavruyu üşütebilir.'),
+                    (4, 'Nisan', 'Koloni büyümesi hızlanır.', ['Yumurtlama düzeni, polen gelişi ve çerçeve doluluğu izlenir.', 'Oğul eğilimi için ana memesi kontrol edilir.', 'Güçlü kolonilerde alan ihtiyacı zamanında karşılanır.'], 'Oğul döneminde geç kalmak koloni gücünü ve bal verimini düşürür.'),
+                    (5, 'Mayıs', 'Oğul ve bal akımı birlikte takip edilir.', ['Oğul kutuları ve sabit kovanlar daha sık gözlenir.', 'Kat ihtiyacı, petek kabartma ve nektar gelişi izlenir.', 'Ana arı sorunu olan koloniler hızlıca not edilir.'], 'Her güçlü koloni aynı hızda gelişmez; karar kovan bazında verilir.'),
+                    (6, 'Haziran', 'Bal akımı ve su ihtiyacı öne çıkar.', ['Kovan önü uçuş yoğunluğu ve su kaynağı takip edilir.', 'Bal katları, sır durumu ve boş alan dengesi izlenir.', 'Aşırı müdahaleden kaçınılır; kontroller kısa tutulur.'], 'Sıcak ve rüzgarlı günlerde su eksikliği koloniyi strese sokabilir.'),
+                    (7, 'Temmuz', 'Hasat zamanı dikkatli seçilir.', ['Sırlı petek oranı ve nem riski değerlendirilir.', 'Hasat sonrası kolonide yeterli besin bırakılır.', 'Yağmacılık riskine karşı açık bal/petek ortada bırakılmaz.'], 'Erken hasat balın nemini artırabilir; geç hasat ise yağma riskini artırabilir.'),
+                    (8, 'Ağustos', 'Bal sonrası sağlık ve stok kontrolü yapılır.', ['Koloni gücü, ana arı durumu ve besin stoku yeniden değerlendirilir.', 'Varroa izleme ve kayıt takibi önem kazanır.', 'Zayıf koloniler için sonbahar planı çıkarılır.'], 'Tedavi ve uygulamalarda yasal ürün, etiket bilgisi ve uzman görüşü esas alınmalıdır.'),
+                    (9, 'Eylül', 'Kışa girecek koloni hazırlanır.', ['Yeterli arı nüfusu ve besin stoku kontrol edilir.', 'Boş ve gereksiz çerçeveler azaltılır.', 'Zayıf koloniler için birleştirme veya destek kararı verilir.'], 'Kışa zayıf giren koloni bahara çıkmakta zorlanır.'),
+                    (10, 'Ekim', 'Son düzenlemeler yapılır.', ['Kovan eğimi, uçuş deliği ve rüzgar yönü kontrol edilir.', 'Besin stoku ve nem riski son kez gözden geçirilir.', 'Kayıtlar toparlanır; eksik notlar tamamlanır.'], 'Nem, soğuktan daha yıkıcı olabilir; havalandırma göz ardı edilmemelidir.'),
+                    (11, 'Kasım', 'Kış düzeni korunur.', ['Kovanlar dışarıdan izlenir; gereksiz kapak açılmaz.', 'Fare ve rüzgar koruması kontrol edilir.', 'Ekipman bakım ve temizlik işleri yapılır.'], 'Sessiz dönem kayıt ve planlama için iyi zamandır.'),
+                    (12, 'Aralık', 'Planlama ayıdır.', ['Geçmiş sezon notları incelenir.', 'Eksik ekipman ve bakım listesi hazırlanır.', 'Bir sonraki sezon için arılık ve flora gözlemleri planlanır.'], 'Kovanı sık açmak yerine dış gözlem ve hazırlık tercih edilir.')
+                ] %}
+
+                <div class="month-panels">
+                    {% for month_no, month_name, headline, tasks, caution in months %}
+                        <article class="month-panel {% if now.month == month_no %}active{% endif %}" data-month-panel="{{ month_no }}">
+                            <div class="month-panel-head">
+                                <span>{{ month_name }}</span>
+                                <h3>{{ headline }}</h3>
+                            </div>
+                            <ul class="check-list">
+                                {% for task in tasks %}
+                                    <li>{{ task }}</li>
+                                {% endfor %}
+                            </ul>
+                            <div class="note-box">{{ caution }}</div>
+                        </article>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="kovan-kontrolu" class="public-band">
         <div class="public-inner public-split">
             <div>
-                <h2>Mevsim Mevsim Arıcılık</h2>
-                <p>Arıcılıkta işlerin çoğu takvime değil, hava durumuna ve koloninin gücüne göre şekillenir. Yine de temel ritim nettir.</p>
+                <h2>Kovan Kontrolünde Neye Bakılır?</h2>
+                <p>İyi kontrol, kovanda uzun süre kalmak değil doğru işaretleri düzenli okumaktır. Bu başlıklar ziyaretçinin bir kontrol kaydında gördüğü ifadeleri anlamasına yardım eder.</p>
             </div>
-            <div class="season-list">
-                <div><strong>İlkbahar</strong><span>Koloni gelişimi, ana arı ve yavru düzeni izlenir.</span></div>
-                <div><strong>Yaz</strong><span>Bal akımı, su ihtiyacı ve gölgeleme takip edilir.</span></div>
-                <div><strong>Sonbahar</strong><span>Besin stoku, zayıf koloniler ve kış hazırlığı değerlendirilir.</span></div>
-                <div><strong>Kış</strong><span>Kovan huzuru korunur; gereksiz açma yapılmaz.</span></div>
+            <div class="inspection-guide-grid">
+                <article>
+                    <strong>Ana Arı ve Yumurta</strong>
+                    <p>Düzenli yumurta ve farklı yaşta yavru varsa koloni çoğunlukla düzenli çalışıyordur. Ana arının görülmesi iyi işarettir ama yumurta düzeni daha pratik göstergedir.</p>
+                </article>
+                <article>
+                    <strong>Yavru Düzeni</strong>
+                    <p>Sıkı ve düzenli yavru alanı güçlü gelişime işaret eder. Dağınık görünüm, açlık, yaşlı ana, hastalık veya stres nedeniyle oluşabilir.</p>
+                </article>
+                <article>
+                    <strong>Bal ve Polen</strong>
+                    <p>Bal enerji, polen protein kaynağıdır. İlkbaharda polen gelişi yavru büyütmeyi destekler; sonbaharda yeterli stok kış başarısı için kritiktir.</p>
+                </article>
+                <article>
+                    <strong>Koloni Davranışı</strong>
+                    <p>Aşırı saldırganlık, telaşlı uçuş, yağmacılık veya kovan önünde sıra dışı ölü arı birikimi not edilmesi gereken işaretlerdir.</p>
+                </article>
+                <article>
+                    <strong>Hastalık Belirtisi</strong>
+                    <p>Kanat bozukluğu, kötü koku, düzensiz yavru, kireçlenmiş yavru veya belirgin zayıflama görülürse kayıt tutulur ve uzman görüşü alınır.</p>
+                </article>
+                <article>
+                    <strong>Kayıt Tutma</strong>
+                    <p>Kısa ama düzenli kayıt, hangi koloninin güçlendiğini, hangisinin destek istediğini ve hangi müdahalenin işe yaradığını zamanla gösterir.</p>
+                </article>
             </div>
+        </div>
+    </section>
+
+    <section id="flora" class="public-band public-band-muted">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Ürgüp Çevresinde Flora Takibi</h2>
+                <p>Balın karakterini tek bir bitki değil, sezon boyunca açan bitkilerin toplamı belirler. Karlık ve Ürgüp çevresinde bağ-bahçe kenarları, meyve çiçekleri, baklagil yem bitkileri ve kır florası arılar için önemlidir.</p>
+            </div>
+            <div class="flora-timeline">
+                <div><strong>Mart - Nisan</strong><span>Meyve çiçekleri, erken kır çiçekleri ve polen kaynakları koloni gelişimini başlatır.</span></div>
+                <div><strong>Mayıs - Haziran</strong><span>Kır çiçekleri, korunga/yonca gibi yem bitkileri ve aromatik bitkiler nektar akımını destekleyebilir.</span></div>
+                <div><strong>Temmuz - Ağustos</strong><span>Sıcaklık ve kuraklık arttıkça su kaynağı, gölge ve geç çiçeklenen bitkiler daha değerli hale gelir.</span></div>
+                <div><strong>Eylül - Ekim</strong><span>Sonbahar poleni ve geç nektar kaynakları kışa girecek genç arıların gelişimini etkiler.</span></div>
+            </div>
+            <div class="note-box mt-2">Çiçeklenme her yıl yağışa ve sıcaklığa göre değişir. Bu yüzden sahadaki gözlem, takvim bilgisinden daha değerlidir.</div>
+        </div>
+    </section>
+
+    <section id="bal" class="public-band">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Bal ve Arı Ürünleri</h2>
+                <p>Arı ürünlerini anlamak, sadece tada değil üretim sürecine de bakmayı gerektirir.</p>
+            </div>
+            <div class="product-grid">
+                <article>
+                    <h3>Bal</h3>
+                    <p>Arıların nektarı kovanda olgunlaştırmasıyla oluşur. İyi hasat için peteklerin yeterince sırlanması ve kovanda koloniye yetecek stok bırakılması önemlidir.</p>
+                </article>
+                <article>
+                    <h3>Polen</h3>
+                    <p>Koloninin protein kaynağıdır. Yavru büyütme döneminde polen gelişi kontrol kayıtlarında önemli bir işarettir.</p>
+                </article>
+                <article>
+                    <h3>Propolis</h3>
+                    <p>Arıların kovandaki açıklıkları kapatmak ve hijyeni desteklemek için kullandığı reçinemsi maddedir.</p>
+                </article>
+                <article>
+                    <h3>Kristalleşme</h3>
+                    <p>Balın kristalleşmesi tek başına bozulma belirtisi değildir. Bitki kaynağı, glikoz/fruktoz dengesi ve saklama sıcaklığı kristalleşmeyi etkiler.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section id="ziyaret" class="public-band public-band-muted">
+        <div class="public-inner public-split">
+            <div>
+                <h2>Arılık Ziyaretinde Güvenlik</h2>
+                <p>Arılar çoğunlukla sakin çalışır; yine de arılık bir üretim alanıdır. Ziyaret planı önceden konuşulmalı ve kovanların yakınına izinsiz girilmemelidir.</p>
+            </div>
+            <ul class="do-dont-list">
+                <li><strong>Parfüm ve yoğun koku kullanmayın.</strong><span>Koku, arıların davranışını etkileyebilir.</span></li>
+                <li><strong>Kovan önünden geçmeyin.</strong><span>Uçuş hattını kapatmak koloniyi huzursuz eder.</span></li>
+                <li><strong>Ani el-kol hareketinden kaçının.</strong><span>Sakin durmak en iyi korunmadır.</span></li>
+                <li><strong>Alerjiniz varsa önceden söyleyin.</strong><span>Arı alerjisi ciddi olabilir; ziyaret buna göre planlanır.</span></li>
+            </ul>
+        </div>
+    </section>
+
+    <section id="sss" class="public-band">
+        <div class="public-inner public-split">
+            <div>
+                <h2>Sık Sorulan Sorular</h2>
+                <p>Kısa cevaplar ziyaretçiler için hazırlanmıştır. Daha özel sorular için mesaj bırakabilirsiniz.</p>
+            </div>
+            <div class="faq-list">
+                <details>
+                    <summary>Balın rengi neden değişir?</summary>
+                    <p>Renk; nektar kaynağı, sezon, bölge ve hasat zamanına göre değişir. Açık renkli bal her zaman daha iyi ya da koyu renkli bal her zaman daha güçlü demek değildir.</p>
+                </details>
+                <details>
+                    <summary>Kovanlar neden public haritada gösterilmiyor?</summary>
+                    <p>Kovan konumları güvenlik açısından hassastır. Bu nedenle public sayfada yalnızca genel arıcılık bilgisi ve anonim özet paylaşılır.</p>
+                </details>
+                <details>
+                    <summary>Arılar kışın ne yapar?</summary>
+                    <p>Koloni kış salkımı oluşturur ve enerjisini korur. Bu dönemde amaç kovana gereksiz müdahale etmeden nem, rüzgar ve besin stokunu yönetmektir.</p>
+                </details>
+                <details>
+                    <summary>Oğul ne demektir?</summary>
+                    <p>Koloninin doğal çoğalma davranışıdır. Ana arı ve bir grup işçi arı yeni yuva aramak için kovandan ayrılabilir.</p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <section class="public-band public-band-dark">
+        <div class="public-inner public-cta">
+            <div>
+                <h2>Bir soru veya ziyaret notu bırakın</h2>
+                <p>Bal, arıcılık, arılık ziyareti veya çiftlik hakkında merak ettiklerinizi iletebilirsiniz.</p>
+            </div>
+            <a href="{{ url_for('public_message') }}" class="btn btn-accent">Mesaj Bırak</a>
         </div>
     </section>
 
@@ -74,7 +253,19 @@
                 <div><strong>{{ stats.swarm_hive_count or 0 }}</strong><span>oğul takip kovanı</span></div>
                 <div><strong>{{ stats.inspection_count or 0 }}</strong><span>kontrol kaydı</span></div>
             </div>
+
+            <div class="source-note">
+                <strong>Kaynak Notları</strong>
+                <span>İçerik, genel arıcılık kayıt tutma, mevsimsel yönetim ve Varroa/hastalık izleme ilkelerine göre sadeleştirilmiştir.</span>
+                <a href="https://honeybeehealthcoalition.org/resources/varroa-management/" target="_blank" rel="noopener">Honey Bee Health Coalition</a>
+                <a href="https://extension.usu.edu/beekeeping/learn/calendar" target="_blank" rel="noopener">USU Extension</a>
+                <a href="https://tarimorman.gov.tr/Belgeler/Mevzuat/Talimatlar/gkgm/balarilarinin_varroosis_hast_mucadele_koruma_talimati.pdf" target="_blank" rel="noopener">Tarım ve Orman Bakanlığı</a>
+            </div>
         </div>
     </section>
 </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/public-guide.js') }}"></script>
 {% endblock %}

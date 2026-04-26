@@ -1,10 +1,11 @@
-const CACHE_NAME = 'ali-baba-public-v1';
+const CACHE_NAME = 'ali-baba-public-v2';
 const PUBLIC_ASSETS = [
   '/',
   '/offline',
   '/mesaj-birak',
   '/static/css/style.css',
   '/static/js/pwa.js',
+  '/static/js/public-guide.js',
   '/static/img/public-hero.webp',
   '/static/img/icon-192.png',
   '/static/img/icon-512.png'

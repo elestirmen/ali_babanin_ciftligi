@@ -16,6 +16,8 @@
     const map = L.map('map', {
         zoomControl: false
     }).setView([38.63, 34.82], 13);
+    const focusTarget = parseFocusTarget();
+    const markerRegistry = new Map();
 
     // Zoom kontrolunu sol alta koy
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
@@ -73,6 +75,42 @@
     };
 
     // --- Marker renk belirleme ---
+    function parseFocusTarget() {
+        const focus = new URLSearchParams(window.location.search).get('focus') || '';
+        const match = focus.match(/^(swarm|fixed|apiary)-(\d+)$/);
+        if (!match) return null;
+        return {
+            type: match[1],
+            id: Number(match[2]),
+            key: `${match[1]}:${match[2]}`
+        };
+    }
+
+    function mapDataUrl() {
+        if (!focusTarget) return '/api/map-data';
+        const params = new URLSearchParams();
+        params.set('focus', `${focusTarget.type}-${focusTarget.id}`);
+        return `/api/map-data?${params.toString()}`;
+    }
+
+    function rememberMarker(type, id, marker, lat, lng) {
+        const key = `${type}:${id}`;
+        markerRegistry.set(key, {
+            marker,
+            latLng: [Number(lat), Number(lng)]
+        });
+    }
+
+    function focusSelectedMarker() {
+        if (!focusTarget) return;
+        const entry = markerRegistry.get(focusTarget.key);
+        if (!entry) return;
+        map.setView(entry.latLng, Math.max(map.getZoom(), 17), { animate: true });
+        window.setTimeout(() => {
+            entry.marker.openPopup();
+        }, 180);
+    }
+
     function getSwarmColor(durum, aktif, overdue) {
         if (!aktif) return 'gray';
         if (durum === 'Taşındı' || durum === 'İptal edildi') return 'gray';
@@ -791,7 +829,8 @@
         swarmHives: L.layerGroup(),
         apiaries: L.layerGroup(),
         kontrolGerekenler: L.layerGroup(),
-        pasifler: L.layerGroup()
+        pasifler: L.layerGroup(),
+        focus: L.layerGroup()
     };
 
     // Tum katmanlari haritaya ekle
@@ -809,7 +848,8 @@
         '🏕️ Oğul Kovanları': layers.swarmHives,
         '🏠 Sabit Arılıklar': layers.apiaries,
         '⚠️ Kontrol Gerekenler': layers.kontrolGerekenler,
-        '🔇 Pasifler': layers.pasifler
+        '🔇 Pasifler': layers.pasifler,
+        '📍 Seçili Kovan': layers.focus
     };
 
     L.control.layers(baseMaps, overlayMaps, {
@@ -819,7 +859,7 @@
 
     // --- Veriyi yukle ---
     function loadMapData() {
-        fetch('/api/map-data')
+        fetch(mapDataUrl())
             .then(response => {
                 if (!response.ok) throw new Error('Veri alinamadi');
                 return response.json();
@@ -834,9 +874,13 @@
                         const icon = createIcon(color, 'swarm');
                         const marker = L.marker([item.latitude, item.longitude], { icon });
                         marker.bindPopup(createPopupContent(item, 'swarm'), { maxWidth: 280 });
+                        rememberMarker('swarm', item.id, marker, item.latitude, item.longitude);
 
+                        if (item.focused) {
+                            layers.focus.addLayer(marker);
+                        }
                         // Pasif: sadece pasif katmanina
-                        if (!item.aktif || item.durum === 'Taşındı' || item.durum === 'İptal edildi') {
+                        else if (!item.aktif || item.durum === 'Taşındı' || item.durum === 'İptal edildi') {
                             layers.pasifler.addLayer(marker);
                         }
                         // Kontrol gereken: sadece ogul katmanina (kirmizi marker zaten uyari veriyor)
@@ -857,7 +901,12 @@
                         const marker = L.marker([item.latitude, item.longitude], { icon });
 
                         marker.bindPopup(createApiaryPopupContent(item), { maxWidth: 280 });
-                        layers.apiaries.addLayer(marker);
+                        rememberMarker('apiary', item.id, marker, item.latitude, item.longitude);
+                        if (item.focused) {
+                            layers.focus.addLayer(marker);
+                        } else {
+                            layers.apiaries.addLayer(marker);
+                        }
                         allCoords.push([item.latitude, item.longitude]);
                     });
                 }
@@ -875,18 +924,21 @@
                         const lng = item.longitude + offset.lng;
 
                         const circleMarker = L.circleMarker([lat, lng], {
-                            radius: 8,
+                            radius: item.focused ? 11 : 8,
                             fillColor: fillColor,
-                            color: '#fff',
-                            weight: 2,
+                            color: item.focused ? '#FFD54F' : '#fff',
+                            weight: item.focused ? 3 : 2,
                             opacity: 1,
                             fillOpacity: 0.85
                         });
 
                         circleMarker.bindPopup(createFixedHivePopupContent(item), { maxWidth: 240 });
+                        rememberMarker('fixed', item.id, circleMarker, lat, lng);
 
                         // Pasif kovanlar pasif katmanina, kontrol gerekenler kontrol katmanina
-                        if (!item.aktif || item.durum === 'Pasif') {
+                        if (item.focused) {
+                            layers.focus.addLayer(circleMarker);
+                        } else if (!item.aktif || item.durum === 'Pasif') {
                             layers.pasifler.addLayer(circleMarker);
                         } else {
                             layers.kontrolGerekenler.addLayer(circleMarker);
@@ -899,6 +951,7 @@
                     const bounds = L.latLngBounds(allCoords);
                     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
                 }
+                focusSelectedMarker();
             })
             .catch(error => {
                 console.error('Harita verisi yuklenemedi:', error);

@@ -43,11 +43,13 @@ def create_tables():
             ulasim_notu TEXT,
             genel_not TEXT,
             fotograf_yolu TEXT,
+            qr_kod_yolu TEXT,
             aktif INTEGER DEFAULT 1 CHECK (aktif IN (0, 1)),
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
         )
     ''')
+    ensure_column(cursor, 'swarm_hives', 'qr_kod_yolu', 'TEXT')
 
     # Sabit ariliklar tablosu
     cursor.execute('''
@@ -105,6 +107,21 @@ def create_tables():
             fotograf_yolu TEXT,
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (kovan_id) REFERENCES fixed_hives(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Ogul kovani kontrol kayitlari
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS swarm_inspections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            swarm_hive_id INTEGER NOT NULL,
+            kontrol_tarihi TEXT NOT NULL,
+            durum TEXT DEFAULT 'Boş',
+            ari_gelis_tarihi TEXT,
+            notlar TEXT,
+            fotograf_yolu TEXT,
+            olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (swarm_hive_id) REFERENCES swarm_hives(id) ON DELETE CASCADE
         )
     ''')
 

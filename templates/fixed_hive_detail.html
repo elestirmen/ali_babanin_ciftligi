@@ -86,6 +86,9 @@
         <a href="{{ url_for('inspection_new', id=hive.id) }}" class="btn btn-accent">📋 Yeni Kontrol Kaydı</a>
         <a href="{{ url_for('inspection_history', id=hive.id) }}" class="btn btn-outline">📜 Kontrol Geçmişi</a>
         <a href="{{ url_for('fixed_hive_qr', id=hive.id) }}" class="btn btn-outline">📱 QR Kod</a>
+        {% if hive.apiary_latitude and hive.apiary_longitude %}
+            <a href="{{ url_for('index', focus='fixed-' ~ hive.id) }}" class="btn btn-outline">🗺️ Haritada Göster</a>
+        {% endif %}
     </div>
 
     <!-- Son Kontrol Kayıtları -->

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Oğul Kontrol Geçmişi - {{ hive.ad }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('swarm_detail', id=hive.id) }}" class="back-link">← {{ hive.ad }}</a>
+
+    <div class="page-header">
+        <div>
+            <h1>📜 Oğul Kontrol Geçmişi</h1>
+            <div class="subtitle">{{ hive.ad }} • Oğul Kovanı</div>
+        </div>
+        <a href="{{ url_for('swarm_inspection_new', id=hive.id) }}" class="btn btn-accent btn-sm">+ Yeni Kontrol</a>
+    </div>
+
+    {% if inspections %}
+        {% for insp in inspections %}
+            <div class="inspection-card">
+                <div class="inspection-date">📅 {{ insp.kontrol_tarihi|format_date }}</div>
+                <div class="inspection-grid">
+                    <div class="inspection-field">
+                        <span class="field-label">Durum:</span>
+                        <span class="field-value">{{ insp.durum }}</span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Arı Var mı:</span>
+                        <span class="field-value">
+                            {% if insp.durum in ['Arı hareketi var', 'Oğul girdi', 'Ana arı kontrol edildi'] %}Evet{% else %}Hayır{% endif %}
+                        </span>
+                    </div>
+                    <div class="inspection-field">
+                        <span class="field-label">Arı Geliş Tarihi:</span>
+                        <span class="field-value">{{ insp.ari_gelis_tarihi|format_date }}</span>
+                    </div>
+                </div>
+                {% if insp.notlar %}
+                    <div class="inspection-notes">📝 {{ insp.notlar }}</div>
+                {% endif %}
+                {% if insp.fotograf_yolu %}
+                    <div class="mt-1">
+                        <img src="{{ media_url(insp.fotograf_yolu) }}" alt="Oğul kontrol fotoğrafı"
+                             style="max-width:200px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <h3>Henüz oğul kontrol kaydı yok</h3>
+            <p>Bu oğul kovanı için ilk kontrol kaydını ekleyin.</p>
+            <a href="{{ url_for('swarm_inspection_new', id=hive.id) }}" class="btn btn-accent">+ Yeni Kontrol Kaydı</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

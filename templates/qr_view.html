@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}QR Kod - {{ hive.kovan_no }} - Ali Baba'nın Çiftliği{% endblock %}
+{% block title %}QR Kod - {{ qr_label }} - Ali Baba'nın Çiftliği{% endblock %}
 
 {% block content %}
 <div class="container">
-    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="back-link">← {{ hive.kovan_no }} - {{ hive.arilik_adi }}</a>
+    <a href="{{ detail_url }}" class="back-link">← {{ back_label }}</a>
 
     <div class="card">
         <div class="card-body">
             <div class="qr-container">
-                <div class="qr-label">{{ hive.kovan_no }}</div>
-                <div class="qr-sublabel mb-2">{{ hive.arilik_adi }}</div>
+                <div class="qr-label">{{ qr_label }}</div>
+                <div class="qr-sublabel mb-2">{{ qr_sublabel }}</div>
 
-                <img src="{{ media_url(qr_path) }}" alt="QR Kod - {{ hive.kovan_no }}">
+                <img src="{{ media_url(qr_path) }}" alt="QR Kod - {{ qr_label }}">
 
                 <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px;">
                     Bu QR kodu tarayarak kovan detay sayfasına hızlıca erişebilirsiniz.
@@ -20,10 +20,10 @@
                 </p>
 
                 <div class="btn-group" style="justify-content:center;">
-                    <a href="{{ media_url(qr_path) }}" download="qr_{{ hive.kovan_no }}.png" class="btn btn-primary">
+                    <a href="{{ media_url(qr_path) }}" download="{{ download_name }}" class="btn btn-primary">
                         📥 QR Kodu İndir
                     </a>
-                    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline">
+                    <a href="{{ detail_url }}" class="btn btn-outline">
                         ← Kovan Detay
                     </a>
                 </div>

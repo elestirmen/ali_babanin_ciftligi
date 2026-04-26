@@ -90,6 +90,10 @@ SWARM_STATUSES = [
     'Ana arı kontrol edildi', 'Taşındı', 'İptal edildi'
 ]
 
+SWARM_ARRIVAL_STATUSES = {
+    'Arı hareketi var', 'Oğul girdi', 'Ana arı kontrol edildi'
+}
+
 FIXED_HIVE_STATUSES = [
     'Zayıf', 'Orta', 'Güçlü', 'Ana arı sorunu var',
     'Hastalık şüphesi var', 'Bal durumu iyi', 'Kontrol gerekli', 'Pasif'
@@ -155,6 +159,14 @@ def build_public_url(endpoint, **values):
     if PUBLIC_URL:
         return f"{PUBLIC_URL}{path}"
     return request.host_url.rstrip('/') + path
+
+
+def parse_map_focus(value):
+    """Harita odak parametresini (swarm-1/fixed-2/apiary-3) ayrıştırır."""
+    match = re.fullmatch(r'(swarm|fixed|apiary)-(\d+)', value or '')
+    if not match:
+        return None, None
+    return match.group(1), int(match.group(2))
 
 
 def normalize_media_path(value):
@@ -823,6 +835,17 @@ def delete_confirmation_valid():
     return confirmation in {'SIL', 'SİL'}
 
 
+def create_swarm_inspection_record(swarm_hive_id, kontrol_tarihi, durum,
+                                   ari_gelis_tarihi=None, notlar=None, fotograf_yolu=None):
+    """Ogul kovani kontrol kaydini ortak sekilde olusturur."""
+    return execute_db('''
+        INSERT INTO swarm_inspections
+        (swarm_hive_id, kontrol_tarihi, durum, ari_gelis_tarihi, notlar, fotograf_yolu)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (swarm_hive_id, kontrol_tarihi, durum, ari_gelis_tarihi,
+          notlar or None, fotograf_yolu))
+
+
 def fixed_hive_conflict(apiary_id, kovan_no, sira_no, konum_no, exclude_id=None):
     """Ayni arilik icinde kovan no veya kroki konumu cakismasini bulur."""
     params = [apiary_id, kovan_no]
@@ -1012,13 +1035,18 @@ def get_exif_gps(filepath):
     return None, None
 
 
-def generate_qr_code(hive_id):
-    """Sabit kovan icin QR kod uretir ve dosya yolunu dondurur."""
-    qr_filename = f"qr_hive_{hive_id}.png"
+def generate_qr_code(hive_id, hive_type='fixed'):
+    """Kovan icin QR kod uretir ve dosya yolunu dondurur."""
+    if hive_type == 'swarm':
+        qr_filename = f"qr_swarm_{hive_id}.png"
+        endpoint = 'swarm_detail'
+    else:
+        qr_filename = f"qr_hive_{hive_id}.png"
+        endpoint = 'fixed_hive_detail'
     qr_filepath = os.path.join(QR_FOLDER, qr_filename)
 
     # QR kodun yonlendirecegi URL
-    url = build_public_url('fixed_hive_detail', id=hive_id)
+    url = build_public_url(endpoint, id=hive_id)
 
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(url)
@@ -1144,7 +1172,10 @@ def public_home():
             (SELECT COUNT(*) FROM apiaries) as apiary_count,
             (SELECT COUNT(*) FROM fixed_hives WHERE aktif = 1) as active_hive_count,
             (SELECT COUNT(*) FROM swarm_hives WHERE aktif = 1) as swarm_hive_count,
-            (SELECT COUNT(*) FROM inspections) as inspection_count
+            (
+                (SELECT COUNT(*) FROM inspections)
+                + (SELECT COUNT(*) FROM swarm_inspections)
+            ) as inspection_count
     ''', one=True)
     latest_posts = query_db('''
         SELECT * FROM public_posts
@@ -1790,6 +1821,14 @@ def admin_swarm_quick_update(id):
             SET durum=?, son_kontrol_tarihi=?, aktif=?, guncelleme_tarihi=datetime('now', 'localtime')
             WHERE id=?
         ''', (durum, son_kontrol_tarihi or None, aktif, id))
+        if son_kontrol_tarihi:
+            create_swarm_inspection_record(
+                id,
+                son_kontrol_tarihi,
+                durum,
+                son_kontrol_tarihi if durum in SWARM_ARRIVAL_STATUSES else None,
+                'Hızlı güncelleme ekranından kaydedildi.'
+            )
         flash('Oğul kovanı güncellendi.', 'success')
     return redirect_to_next('admin_hives')
 
@@ -1826,7 +1865,7 @@ def swarm_delete(id):
         return redirect(url_for('swarm_detail', id=id))
 
     execute_db('DELETE FROM swarm_hives WHERE id = ?', (id,))
-    flash(f"{hive['ad']} silindi.", 'success')
+    flash(f"{hive['ad']} silindi. Bağlı oğul kontrol kayıtları da silindi.", 'success')
     return redirect(url_for('swarm_list'))
 
 
@@ -1889,6 +1928,7 @@ def apiary_delete(id):
 @app.route('/api/map-data')
 def api_map_data():
     """Haritadaki tum kovan ve arilik verilerini JSON olarak dondurur."""
+    focus_type, focus_id = parse_map_focus(request.args.get('focus', ''))
     data = {
         'swarm_hives': [],
         'apiaries': [],
@@ -1914,6 +1954,7 @@ def api_map_data():
             'fotograf': foto,
             'overdue': is_overdue(s['son_kontrol_tarihi'], threshold_days=7),
             'detail_url': url_for('swarm_detail', id=s['id']),
+            'focused': focus_type == 'swarm' and focus_id == s['id'],
         })
 
     # Ariliklar - toplam/kontrol gereken/pasif sayilari ile
@@ -1945,24 +1986,30 @@ def api_map_data():
             'kontrol_gereken_sayisi': stats['kontrol_gereken'] if stats else 0,
             'pasif_sayisi': stats['pasif'] if stats else 0,
             'detail_url': url_for('apiary_detail', id=a['id']),
+            'focused': focus_type == 'apiary' and focus_id == a['id'],
         })
 
     # Sabit kovanlar - sadece kontrol gereken veya pasif olanlari dondur
     # (haritada bunlar circleMarker ile arilik etrafinda offset ile gosterilecek)
+    fixed_focus_sql = ''
+    fixed_params = []
+    if focus_type == 'fixed' and focus_id is not None:
+        fixed_focus_sql = ' OR fh.id = ?'
+        fixed_params.append(focus_id)
     fixed = query_db('''
         SELECT fh.*, a.latitude as a_lat, a.longitude as a_lng, a.arilik_adi
         FROM fixed_hives fh
         JOIN apiaries a ON fh.arilik_id = a.id
         WHERE a.latitude IS NOT NULL AND a.longitude IS NOT NULL
-        AND (
+        AND ((
             fh.aktif = 0
             OR fh.durum = 'Pasif'
             OR fh.durum = 'Kontrol gerekli'
             OR fh.durum IN ('Hastalık şüphesi var', 'Zayıf', 'Ana arı sorunu var')
             OR fh.son_kontrol_tarihi IS NULL
             OR julianday('now', 'localtime') - julianday(fh.son_kontrol_tarihi) > 7
-        )
-    ''')
+        )''' + fixed_focus_sql + ''')
+    ''', tuple(fixed_params))
     for f in fixed:
         data['fixed_hives'].append({
             'id': f['id'],
@@ -1976,6 +2023,7 @@ def api_map_data():
             'aktif': f['aktif'],
             'overdue': is_overdue(f['son_kontrol_tarihi'], threshold_days=7),
             'detail_url': url_for('fixed_hive_detail', id=f['id']),
+            'focused': focus_type == 'fixed' and focus_id == f['id'],
         })
 
     return jsonify(data)
@@ -2041,13 +2089,20 @@ def swarm_new():
         # Kullanici vermemisse kurulum tarihini kullan, o da yoksa bugunu kullan.
         son_kontrol = kurulum_tarihi or datetime.now().strftime('%Y-%m-%d')
 
-        execute_db('''
+        hive_id = execute_db('''
             INSERT INTO swarm_hives (ad, latitude, longitude, kurulum_tarihi,
             son_kontrol_tarihi, durum, ulasim_notu, genel_not, fotograf_yolu)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (ad, lat_val, lng_val, kurulum_tarihi or None,
               son_kontrol, durum, ulasim_notu or None,
               genel_not or None, fotograf_yolu))
+        create_swarm_inspection_record(
+            hive_id,
+            son_kontrol,
+            durum,
+            son_kontrol if durum in SWARM_ARRIVAL_STATUSES else None,
+            'İlk kayıt oluşturuldu.'
+        )
 
         flash('Ogul kovani basariyla eklendi.', 'success')
         return redirect(url_for('swarm_list'))
@@ -2062,7 +2117,107 @@ def swarm_detail(id):
     if not hive:
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('swarm_list'))
-    return render_template('swarm_detail.html', hive=hive)
+    inspections = query_db('''
+        SELECT * FROM swarm_inspections
+        WHERE swarm_hive_id = ?
+        ORDER BY kontrol_tarihi DESC, id DESC
+        LIMIT 5
+    ''', (id,))
+    return render_template('swarm_detail.html', hive=hive, inspections=inspections)
+
+
+@app.route('/swarm-hives/<int:id>/qr')
+def swarm_hive_qr(id):
+    """Ogul kovani QR kod sayfasi."""
+    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    if not hive:
+        flash('Kovan bulunamadi.', 'error')
+        return redirect(url_for('swarm_list'))
+
+    qr_path = hive['qr_kod_yolu'] or f"qrcodes/qr_swarm_{id}.png"
+    qr_abs_path = media_abs_path(qr_path)
+    if not hive['qr_kod_yolu'] or not os.path.exists(qr_abs_path):
+        qr_path = generate_qr_code(id, hive_type='swarm')
+        if hive['qr_kod_yolu'] != qr_path:
+            execute_db('UPDATE swarm_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
+
+    return render_template(
+        'qr_view.html',
+        hive=hive,
+        qr_path=qr_path,
+        qr_label=hive['ad'],
+        qr_sublabel='Oğul Kovanı',
+        detail_url=url_for('swarm_detail', id=id),
+        back_label=f"{hive['ad']} - Oğul Kovanı",
+        download_name=f"qr_ogul_{id}.png",
+    )
+
+
+@app.route('/swarm-hives/<int:id>/inspections/new', methods=['GET', 'POST'])
+def swarm_inspection_new(id):
+    """Ogul kovani icin yeni kontrol kaydi ekleme."""
+    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    if not hive:
+        flash('Kovan bulunamadi.', 'error')
+        return redirect(url_for('swarm_list'))
+
+    if request.method == 'POST':
+        kontrol_tarihi = request.form.get('kontrol_tarihi', '').strip()
+        if not kontrol_tarihi:
+            kontrol_tarihi = datetime.now().strftime('%Y-%m-%d')
+        durum = request.form.get('durum', hive['durum'] or 'Boş')
+        ari_gelis_tarihi = request.form.get('ari_gelis_tarihi', '').strip()
+        notlar = request.form.get('notlar', '').strip()
+
+        kontrol_tarihi, kontrol_error = validate_date(kontrol_tarihi, 'Kontrol tarihi', required=True)
+        durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
+        ari_gelis_tarihi, gelis_error = validate_date(ari_gelis_tarihi, 'Arı geliş tarihi')
+        if status_error or kontrol_error or gelis_error:
+            flash_errors([status_error, kontrol_error, gelis_error])
+            return render_template('swarm_inspection_form.html', hive=hive, statuses=SWARM_STATUSES)
+
+        fotograf_yolu = None
+        file = request.files.get('fotograf')
+        if file and file.filename:
+            fotograf_yolu = save_upload(file)
+            if not fotograf_yolu:
+                return render_template('swarm_inspection_form.html', hive=hive, statuses=SWARM_STATUSES)
+
+        create_swarm_inspection_record(
+            id,
+            kontrol_tarihi,
+            durum,
+            ari_gelis_tarihi or None,
+            notlar,
+            fotograf_yolu
+        )
+        execute_db('''
+            UPDATE swarm_hives
+            SET durum=?, son_kontrol_tarihi=?, guncelleme_tarihi=datetime('now','localtime')
+            WHERE id=?
+        ''', (durum, kontrol_tarihi, id))
+
+        flash('Oğul kontrol kaydı eklendi.', 'success')
+        return redirect(url_for('swarm_detail', id=id))
+
+    return render_template('swarm_inspection_form.html', hive=hive, statuses=SWARM_STATUSES)
+
+
+@app.route('/swarm-hives/<int:id>/inspections')
+def swarm_inspection_history(id):
+    """Ogul kovani kontrol gecmisi."""
+    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    if not hive:
+        flash('Kovan bulunamadi.', 'error')
+        return redirect(url_for('swarm_list'))
+
+    inspections = query_db('''
+        SELECT * FROM swarm_inspections
+        WHERE swarm_hive_id = ?
+        ORDER BY kontrol_tarihi DESC, id DESC
+    ''', (id,))
+
+    return render_template('swarm_inspection_history.html', hive=hive, inspections=inspections)
 
 
 @app.route('/swarm-hives/<int:id>/edit', methods=['GET', 'POST'])
@@ -2320,7 +2475,8 @@ def fixed_hive_new(apiary_id):
 def fixed_hive_detail(id):
     """Sabit kovan detay sayfasi."""
     hive = query_db('''
-        SELECT fh.*, a.arilik_adi, a.id as arilik_id_val
+        SELECT fh.*, a.arilik_adi, a.id as arilik_id_val,
+               a.latitude as apiary_latitude, a.longitude as apiary_longitude
         FROM fixed_hives fh
         JOIN apiaries a ON fh.arilik_id = a.id
         WHERE fh.id = ?
@@ -2437,7 +2593,16 @@ def fixed_hive_qr(id):
         if hive['qr_kod_yolu'] != qr_path:
             execute_db('UPDATE fixed_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
 
-    return render_template('qr_view.html', hive=hive, qr_path=qr_path)
+    return render_template(
+        'qr_view.html',
+        hive=hive,
+        qr_path=qr_path,
+        qr_label=hive['kovan_no'],
+        qr_sublabel=hive['arilik_adi'],
+        detail_url=url_for('fixed_hive_detail', id=id),
+        back_label=f"{hive['kovan_no']} - {hive['arilik_adi']}",
+        download_name=f"qr_{hive['kovan_no']}.png",
+    )
 
 
 # ---------------------------------------------------------------------------

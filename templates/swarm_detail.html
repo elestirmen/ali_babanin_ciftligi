@@ -80,24 +80,66 @@
     </div>
 
     <!-- Aksiyon butonları -->
-    {% if hive.latitude and hive.longitude %}
-        <div class="btn-group">
+    <div class="btn-group mb-2">
+        <a href="{{ url_for('swarm_inspection_new', id=hive.id) }}" class="btn btn-accent">📋 Yeni Kontrol Kaydı</a>
+        <a href="{{ url_for('swarm_inspection_history', id=hive.id) }}" class="btn btn-outline">📜 Kontrol Geçmişi</a>
+        <a href="{{ url_for('swarm_hive_qr', id=hive.id) }}" class="btn btn-outline">📱 QR Kod</a>
+        {% if hive.latitude and hive.longitude %}
+            <a href="{{ url_for('index', focus='swarm-' ~ hive.id) }}" class="btn btn-outline">🗺️ Haritada Göster</a>
             <a href="https://www.google.com/maps/dir/?api=1&destination={{ hive.latitude }},{{ hive.longitude }}"
                target="_blank" rel="noopener" class="btn btn-success">
                 🧭 Yol Tarifi Al
             </a>
-            <a href="{{ url_for('swarm_edit', id=hive.id) }}" class="btn btn-outline">✏️ Düzenle</a>
+        {% endif %}
+        <a href="{{ url_for('swarm_edit', id=hive.id) }}" class="btn btn-outline">✏️ Düzenle</a>
+    </div>
+
+    <!-- Son Kontrol Kayıtları -->
+    {% if inspections %}
+        <div class="card">
+            <div class="card-header">📋 Son Oğul Kontrolleri</div>
+            <div class="card-body">
+                {% for insp in inspections %}
+                    <div class="inspection-card">
+                        <div class="inspection-date">📅 {{ insp.kontrol_tarihi|format_date }}</div>
+                        <div class="inspection-grid">
+                            <div class="inspection-field">
+                                <span class="field-label">Durum</span>
+                                <span class="field-value">{{ insp.durum }}</span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Arı Var mı</span>
+                                <span class="field-value">
+                                    {% if insp.durum in ['Arı hareketi var', 'Oğul girdi', 'Ana arı kontrol edildi'] %}Evet{% else %}Hayır{% endif %}
+                                </span>
+                            </div>
+                            <div class="inspection-field">
+                                <span class="field-label">Geliş Tarihi</span>
+                                <span class="field-value">{{ insp.ari_gelis_tarihi|format_date }}</span>
+                            </div>
+                        </div>
+                        {% if insp.notlar %}
+                            <div class="inspection-notes">📝 {{ insp.notlar }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+                {% if inspections|length >= 5 %}
+                    <div class="text-center mt-1">
+                        <a href="{{ url_for('swarm_inspection_history', id=hive.id) }}" class="btn btn-outline btn-sm">Tüm Geçmişi Gör →</a>
+                    </div>
+                {% endif %}
+            </div>
         </div>
     {% endif %}
 
     <div class="danger-zone mt-3">
         <div>
             <strong>Oğul kovanını sil</strong>
-            <p>Bu kayıt kalıcı olarak silinir. İşlem geri alınamaz.</p>
+            <p>Bu kayıt ve bağlı oğul kontrol geçmişi kalıcı olarak silinir. İşlem geri alınamaz.</p>
         </div>
         <form method="POST" action="{{ url_for('swarm_delete', id=hive.id) }}" class="danger-delete-form"
               data-delete-label="{{ hive.ad }}"
-              data-delete-warning="Bu oğul kovanı kaydı kalıcı olarak silinir. Bu işlem geri alınamaz.">
+              data-delete-warning="Bu oğul kovanı ve bağlı kontrol kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="confirm_text" value="">
             <button type="submit" class="btn btn-danger">Sil</button>

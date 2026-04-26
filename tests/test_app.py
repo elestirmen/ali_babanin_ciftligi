@@ -311,6 +311,12 @@ class AppSecurityAndValidationTests(unittest.TestCase):
                VALUES (?, ?)''',
             ('Silinecek Ogul', 'Boş')
         )
+        app_module.execute_db(
+            '''INSERT INTO swarm_inspections
+               (swarm_hive_id, kontrol_tarihi, durum)
+               VALUES (?, ?, ?)''',
+            (swarm_id, '2026-04-26', 'Boş')
+        )
 
         response = self.client.post(f'/swarm-hives/{swarm_id}/delete', data={
             'csrf_token': token,
@@ -325,6 +331,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.count_rows('swarm_hives'), 0)
+        self.assertEqual(self.count_rows('swarm_inspections'), 0)
 
         response = self.client.post(f'/fixed-hives/{fixed_id}/delete', data={
             'csrf_token': token,
@@ -355,6 +362,89 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(self.count_rows('apiaries'), 0)
         self.assertEqual(self.count_rows('fixed_hives'), 0)
         self.assertEqual(self.count_rows('inspections'), 0)
+
+    def test_swarm_qr_inspection_history_and_map_focus(self):
+        token = self.login()
+        swarm_id = app_module.execute_db(
+            '''INSERT INTO swarm_hives
+               (ad, latitude, longitude, durum, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?, ?, ?)''',
+            ('Dere Kenarı', 38.63, 34.82, 'Boş', '2026-04-20', 1)
+        )
+
+        response = self.client.get(f'/swarm-hives/{swarm_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'/admin?focus=swarm-', response.data)
+        self.assertIn('Yeni Kontrol Kaydı'.encode('utf-8'), response.data)
+        self.assertIn('QR Kod'.encode('utf-8'), response.data)
+
+        response = self.client.get(f'/swarm-hives/{swarm_id}/qr')
+        self.assertEqual(response.status_code, 200)
+        qr_row = self.fetch_one('SELECT qr_kod_yolu FROM swarm_hives WHERE id = ?', (swarm_id,))
+        self.assertTrue(qr_row['qr_kod_yolu'].startswith('qrcodes/qr_swarm_'))
+        self.assertTrue(Path(app_module.media_abs_path(qr_row['qr_kod_yolu'])).exists())
+
+        response = self.client.post(f'/swarm-hives/{swarm_id}/inspections/new', data={
+            'csrf_token': token,
+            'kontrol_tarihi': '2026-04-26',
+            'durum': 'Arı hareketi var',
+            'ari_gelis_tarihi': '2026-04-25',
+            'notlar': 'Sabah arı hareketi görüldü.',
+        })
+        self.assertEqual(response.status_code, 302)
+        swarm = self.fetch_one(
+            'SELECT durum, son_kontrol_tarihi FROM swarm_hives WHERE id = ?',
+            (swarm_id,)
+        )
+        self.assertEqual(swarm['durum'], 'Arı hareketi var')
+        self.assertEqual(swarm['son_kontrol_tarihi'], '2026-04-26')
+        inspection = self.fetch_one(
+            '''SELECT durum, ari_gelis_tarihi, notlar
+               FROM swarm_inspections WHERE swarm_hive_id = ?''',
+            (swarm_id,)
+        )
+        self.assertEqual(inspection['ari_gelis_tarihi'], '2026-04-25')
+        self.assertIn('Sabah arı hareketi', inspection['notlar'])
+
+        response = self.client.get(f'/swarm-hives/{swarm_id}/inspections')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Arı hareketi var'.encode('utf-8'), response.data)
+        self.assertIn('Sabah arı hareketi'.encode('utf-8'), response.data)
+
+        response = self.client.get(f'/api/map-data?focus=swarm-{swarm_id}')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        focused = [item for item in data['swarm_hives'] if item['id'] == swarm_id]
+        self.assertEqual(len(focused), 1)
+        self.assertTrue(focused[0]['focused'])
+
+    def test_fixed_hive_map_focus_includes_normal_hive(self):
+        self.login()
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arılık', 38.64, 34.83)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, durum, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?, ?)''',
+            (apiary_id, 'K1', 'Güçlü', '2099-01-01', 1)
+        )
+
+        response = self.client.get('/api/map-data')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['fixed_hives'], [])
+
+        response = self.client.get(f'/api/map-data?focus=fixed-{fixed_id}')
+        self.assertEqual(response.status_code, 200)
+        fixed_hives = response.get_json()['fixed_hives']
+        self.assertEqual(len(fixed_hives), 1)
+        self.assertEqual(fixed_hives[0]['id'], fixed_id)
+        self.assertTrue(fixed_hives[0]['focused'])
+
+        response = self.client.get(f'/fixed-hives/{fixed_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'/admin?focus=fixed-{fixed_id}'.encode('utf-8'), response.data)
 
     def test_admin_backups_require_login(self):
         response = self.client.get('/admin/backups')

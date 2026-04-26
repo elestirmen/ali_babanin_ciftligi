@@ -145,10 +145,31 @@ img {
     white-space: nowrap;
 }
 
+.navbar-nav a.nav-priority {
+    color: white;
+    background: rgba(255, 213, 79, 0.14);
+    border: 1px solid rgba(255, 213, 79, 0.38);
+    padding: 7px 11px;
+    font-weight: 700;
+}
+
 .navbar-nav a:hover,
 .navbar-nav a.active {
     color: white;
     background: rgba(255, 255, 255, 0.15);
+}
+
+.navbar-nav a.nav-priority:hover {
+    color: var(--color-accent-light);
+    background: rgba(255, 213, 79, 0.2);
+    border-color: rgba(255, 213, 79, 0.62);
+}
+
+.navbar-nav a.nav-priority.active {
+    color: var(--color-primary-dark);
+    background: var(--color-accent-light);
+    border-color: rgba(255, 255, 255, 0.75);
+    box-shadow: 0 2px 8px rgba(62, 39, 35, 0.18);
 }
 
 .navbar-logout-form {
@@ -214,6 +235,10 @@ img {
         font-size: 1rem;
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .navbar-nav a.nav-priority {
+        padding: 11px 15px;
     }
 }
 

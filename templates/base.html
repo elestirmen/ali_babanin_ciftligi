@@ -33,14 +33,14 @@
             <li><a href="{{ url_for('public_honey_stories') }}" class="{% if request.endpoint in ['public_honey_stories', 'public_honey_story_detail'] %}active{% endif %}">Bal</a></li>
             <li><a href="{{ url_for('public_message') }}" class="{% if request.endpoint == 'public_message' %}active{% endif %}">Mesaj Bırak</a></li>
         {% if is_authenticated %}
-                <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
+                <li><a href="{{ url_for('index') }}" class="nav-priority {% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
                 <li><a href="{{ url_for('admin_hives') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_') and 'hive' in request.endpoint %}active{% endif %}">Kovanlar</a></li>
                 <li><a href="{{ url_for('admin_export') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_export') %}active{% endif %}">Dışa Aktarma</a></li>
                 <li><a href="{{ url_for('admin_backups') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_backup') %}active{% endif %}">Yedekleme</a></li>
                 <li><a href="{{ url_for('admin_content') }}" class="{% if request.endpoint in ['admin_content', 'admin_posts', 'admin_post_new', 'admin_post_edit', 'admin_honey_stories', 'admin_honey_story_new', 'admin_honey_story_edit'] %}active{% endif %}">İçerik</a></li>
                 <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">Mesajlar</a></li>
-                <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
-                <li><a href="{{ url_for('apiary_list') }}" class="{% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
+                <li><a href="{{ url_for('swarm_list') }}" class="nav-priority {% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
+                <li><a href="{{ url_for('apiary_list') }}" class="nav-priority {% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
                 <li>
                     <form method="POST" action="{{ url_for('logout') }}" class="navbar-logout-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

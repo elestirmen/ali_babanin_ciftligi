@@ -1,3 +1,4 @@
 Flask==3.1.1
+gunicorn==23.0.0
 Pillow==11.2.1
 qrcode==8.0

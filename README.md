@@ -65,6 +65,45 @@ python app.py
 
 Uygulama `http://localhost:5000` adresinde çalışacaktır.
 
+## Docker ve Nginx Proxy Manager ile Yayın
+
+Bu repo, Nginx Proxy Manager ile aynı Docker ağına bağlanacak şekilde
+hazırlanmıştır. Varsayılan uygulama portu `51847`'dir ve NPM proxy host hedefi
+`ali-baba-ciftligi:51847` olmalıdır.
+
+```bash
+cp .env.example .env
+python - <<'PY'
+import secrets
+print("ALI_BABA_SECRET_KEY=" + secrets.token_hex(32))
+PY
+```
+
+`.env` içinde en az şu değerleri ayarlayın:
+
+```bash
+ALI_BABA_PASSWORD=guclu-bir-parola
+ALI_BABA_SECRET_KEY=uzun-rastgele-bir-deger
+ALI_BABA_PUBLIC_URL=https://alibaba.urgup.keenetic.link
+ALI_BABA_PORT=51847
+```
+
+Ardından:
+
+```bash
+docker compose up -d --build
+```
+
+NPM tarafında proxy host:
+
+```text
+Domain: alibaba.urgup.keenetic.link
+Scheme: http
+Forward Hostname/IP: ali-baba-ciftligi
+Forward Port: 51847
+SSL: Let's Encrypt, Force SSL açık
+```
+
 ## Giriş ve Ayarlar
 
 - Varsayılan giriş şifresi: `alibaba`

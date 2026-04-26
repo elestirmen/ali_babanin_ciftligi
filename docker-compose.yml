@@ -1,0 +1,38 @@
+services:
+  ali-baba-ciftligi:
+    build: .
+    image: ali-baba-ciftligi:latest
+    container_name: ali-baba-ciftligi
+    restart: unless-stopped
+    networks:
+      - npm-net
+    environment:
+      ALI_BABA_PASSWORD: ${ALI_BABA_PASSWORD:?ALI_BABA_PASSWORD is required}
+      ALI_BABA_SECRET_KEY: ${ALI_BABA_SECRET_KEY:?ALI_BABA_SECRET_KEY is required}
+      ALI_BABA_PUBLIC_URL: ${ALI_BABA_PUBLIC_URL:-https://alibaba.urgup.keenetic.link}
+      ALI_BABA_PORT: ${ALI_BABA_PORT:-51847}
+      ALI_BABA_DEBUG: "0"
+      ALI_BABA_PROXY_FIX: "1"
+      ALI_BABA_DB_PATH: /data/ali_baba.db
+      ALI_BABA_UPLOAD_FOLDER: /app/static/uploads
+      ALI_BABA_QR_FOLDER: /app/static/qrcodes
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+    volumes:
+      - ali_baba_data:/data
+      - ali_baba_uploads:/app/static/uploads
+      - ali_baba_qrcodes:/app/static/qrcodes
+
+networks:
+  npm-net:
+    external: true
+
+volumes:
+  ali_baba_data:
+    external: true
+    name: ali_baba_data
+  ali_baba_uploads:
+    external: true
+    name: ali_baba_uploads
+  ali_baba_qrcodes:
+    external: true
+    name: ali_baba_qrcodes

@@ -112,6 +112,17 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.count_rows('fixed_hives'), 1)
 
+    def test_public_url_overrides_absolute_url_generation(self):
+        previous_public_url = app_module.PUBLIC_URL
+        app_module.PUBLIC_URL = 'https://alibaba.urgup.keenetic.link'
+        try:
+            with app_module.app.test_request_context('/', base_url='http://internal.local'):
+                url = app_module.build_public_url('fixed_hive_detail', id=7)
+        finally:
+            app_module.PUBLIC_URL = previous_public_url
+
+        self.assertEqual(url, 'https://alibaba.urgup.keenetic.link/fixed-hives/7')
+
 
 if __name__ == '__main__':
     unittest.main()

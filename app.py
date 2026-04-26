@@ -11,6 +11,7 @@ from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect, url_for,
                    flash, jsonify, session, abort)
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -20,6 +21,8 @@ import qrcode
 # Uygulama konfigurasyonu
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+if os.environ.get('ALI_BABA_PROXY_FIX', '0') == '1':
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('ALI_BABA_DB_PATH', os.path.join(BASE_DIR, 'ali_baba.db'))
@@ -27,6 +30,7 @@ UPLOAD_FOLDER = os.environ.get('ALI_BABA_UPLOAD_FOLDER',
                                os.path.join(BASE_DIR, 'static', 'uploads'))
 QR_FOLDER = os.environ.get('ALI_BABA_QR_FOLDER',
                            os.path.join(BASE_DIR, 'static', 'qrcodes'))
+PUBLIC_URL = os.environ.get('ALI_BABA_PUBLIC_URL', '').rstrip('/')
 APP_PASSWORD = os.environ.get('ALI_BABA_PASSWORD', 'alibaba')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
@@ -84,6 +88,14 @@ def csrf_token():
         token = secrets.token_urlsafe(32)
         session['_csrf_token'] = token
     return token
+
+
+def build_public_url(endpoint, **values):
+    """Public URL tanimliysa mutlak URL'leri o domain ile uretir."""
+    path = url_for(endpoint, **values)
+    if PUBLIC_URL:
+        return f"{PUBLIC_URL}{path}"
+    return request.host_url.rstrip('/') + path
 
 
 @app.before_request
@@ -383,7 +395,7 @@ def generate_qr_code(hive_id):
     qr_filepath = os.path.join(QR_FOLDER, qr_filename)
 
     # QR kodun yonlendirecegi URL
-    url = request.host_url.rstrip('/') + url_for('fixed_hive_detail', id=hive_id)
+    url = build_public_url('fixed_hive_detail', id=hive_id)
 
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(url)

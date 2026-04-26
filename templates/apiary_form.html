@@ -68,5 +68,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/location_picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/location_picker.js', v=asset_version) }}"></script>
 {% endblock %}

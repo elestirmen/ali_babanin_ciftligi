@@ -34,6 +34,23 @@ PUBLIC_URL = os.environ.get('ALI_BABA_PUBLIC_URL', '').rstrip('/')
 APP_PASSWORD = os.environ.get('ALI_BABA_PASSWORD', 'alibaba')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
+ASSET_VERSION = os.environ.get('ALI_BABA_ASSET_VERSION')
+if not ASSET_VERSION:
+    asset_version_paths = [
+        __file__,
+        os.path.join(BASE_DIR, 'static', 'css', 'style.css'),
+        os.path.join(BASE_DIR, 'static', 'js', 'map.js'),
+        os.path.join(BASE_DIR, 'static', 'js', 'location_picker.js'),
+        os.path.join(BASE_DIR, 'static', 'js', 'public-guide.js'),
+        os.path.join(BASE_DIR, 'static', 'js', 'pwa.js'),
+        os.path.join(BASE_DIR, 'static', 'sw.js'),
+    ]
+    ASSET_VERSION = str(int(max(
+        os.path.getmtime(path)
+        for path in asset_version_paths
+        if os.path.exists(path)
+    )))
+
 app.secret_key = os.environ.get('ALI_BABA_SECRET_KEY') or secrets.token_hex(32)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['QR_FOLDER'] = QR_FOLDER
@@ -69,6 +86,14 @@ INSPECTION_CHOICES = {
     'ilaclama_yapildi': ['Evet', 'Hayır'],
 }
 
+PUBLIC_MESSAGE_CATEGORIES = [
+    'Bal hakkında soru', 'Ziyaret talebi', 'Arıcılık sorusu', 'İş birliği', 'Diğer'
+]
+
+PUBLIC_MESSAGE_STATUSES = ['Yeni', 'Okundu', 'Yanıtlandı', 'Ziyaret planlandı']
+
+PUBLIC_POST_CATEGORIES = ['Flora', 'Kovan Bakımı', 'Hasat', 'Ziyaret', 'Duyuru']
+
 # ---------------------------------------------------------------------------
 # Basit oturum ve CSRF korumasi
 # ---------------------------------------------------------------------------
@@ -78,6 +103,9 @@ PUBLIC_ENDPOINTS = {
     'static',
     'public_home',
     'public_message',
+    'public_journal',
+    'public_honey_stories',
+    'public_honey_story_detail',
     'offline',
     'manifest',
     'service_worker',
@@ -256,6 +284,14 @@ def flash_errors(errors):
     for err in errors:
         if err:
             flash(err, 'error')
+
+
+def redirect_to_next(default_endpoint, **values):
+    """Formdan gelen guvenli next varsa oraya, yoksa verilen endpoint'e doner."""
+    next_url = request.form.get('next')
+    if is_safe_local_next(next_url):
+        return redirect(next_url)
+    return redirect(url_for(default_endpoint, **values))
 
 
 def fixed_hive_conflict(apiary_id, kovan_no, sira_no, konum_no, exclude_id=None):
@@ -471,7 +507,8 @@ def utility_processor():
         'is_overdue': is_overdue,
         'now': datetime.now(),
         'csrf_token': csrf_token,
-        'is_authenticated': session.get('authenticated', False)
+        'is_authenticated': session.get('authenticated', False),
+        'asset_version': ASSET_VERSION
     }
 
 
@@ -529,7 +566,24 @@ def public_home():
             (SELECT COUNT(*) FROM swarm_hives WHERE aktif = 1) as swarm_hive_count,
             (SELECT COUNT(*) FROM inspections) as inspection_count
     ''', one=True)
-    return render_template('public_home.html', stats=stats)
+    latest_posts = query_db('''
+        SELECT * FROM public_posts
+        WHERE yayinla = 1
+        ORDER BY yayin_tarihi DESC, id DESC
+        LIMIT 3
+    ''')
+    latest_stories = query_db('''
+        SELECT * FROM honey_stories
+        WHERE yayinla = 1
+        ORDER BY yayin_tarihi DESC, id DESC
+        LIMIT 2
+    ''')
+    return render_template(
+        'public_home.html',
+        stats=stats,
+        latest_posts=latest_posts,
+        latest_stories=latest_stories,
+    )
 
 
 @app.route('/mesaj-birak', methods=['GET', 'POST'])
@@ -538,6 +592,7 @@ def public_message():
     form = {
         'ad': '',
         'iletisim': '',
+        'kategori': 'Diğer',
         'konu': '',
         'mesaj': '',
     }
@@ -548,12 +603,18 @@ def public_message():
             flash('Mesajiniz alindi.', 'success')
             return redirect(url_for('public_message'))
 
-        form = {key: request.form.get(key, '').strip() for key in form}
+        defaults = form.copy()
+        form = {
+            key: request.form.get(key, defaults[key]).strip()
+            for key in defaults
+        }
         errors = []
         if not form['ad']:
             errors.append('Ad alanı zorunludur.')
         if not form['mesaj']:
             errors.append('Mesaj alanı zorunludur.')
+        if form['kategori'] not in PUBLIC_MESSAGE_CATEGORIES:
+            errors.append('Konu türü geçersiz.')
         if len(form['ad']) > 80:
             errors.append('Ad en fazla 80 karakter olabilir.')
         if len(form['iletisim']) > 120:
@@ -568,11 +629,12 @@ def public_message():
         else:
             execute_db('''
                 INSERT INTO public_messages
-                (ad, iletisim, konu, mesaj, ip_adresi, user_agent)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (ad, iletisim, kategori, konu, mesaj, ip_adresi, user_agent)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 form['ad'],
                 form['iletisim'] or None,
+                form['kategori'],
                 form['konu'] or None,
                 form['mesaj'],
                 request.remote_addr,
@@ -581,7 +643,57 @@ def public_message():
             flash('Mesajiniz alindi.', 'success')
             return redirect(url_for('public_message'))
 
-    return render_template('public_message.html', form=form)
+    return render_template(
+        'public_message.html',
+        form=form,
+        categories=PUBLIC_MESSAGE_CATEGORIES,
+    )
+
+
+@app.route('/gunluk')
+def public_journal():
+    """Public sezon gunlugu yazilari."""
+    category = request.args.get('kategori', '').strip()
+    params = []
+    where = 'WHERE yayinla = 1'
+    if category in PUBLIC_POST_CATEGORIES:
+        where += ' AND kategori = ?'
+        params.append(category)
+
+    posts = query_db(f'''
+        SELECT * FROM public_posts
+        {where}
+        ORDER BY yayin_tarihi DESC, id DESC
+    ''', params)
+    return render_template(
+        'public_journal.html',
+        posts=posts,
+        categories=PUBLIC_POST_CATEGORIES,
+        selected_category=category,
+    )
+
+
+@app.route('/bal-hikayeleri')
+def public_honey_stories():
+    """Public bal hikayeleri listesi."""
+    stories = query_db('''
+        SELECT * FROM honey_stories
+        WHERE yayinla = 1
+        ORDER BY yayin_tarihi DESC, id DESC
+    ''')
+    return render_template('public_honey_stories.html', stories=stories)
+
+
+@app.route('/bal-hikayeleri/<int:id>')
+def public_honey_story_detail(id):
+    """Public bal hikayesi detayi."""
+    story = query_db('''
+        SELECT * FROM honey_stories
+        WHERE id = ? AND yayinla = 1
+    ''', (id,), one=True)
+    if not story:
+        abort(404)
+    return render_template('public_honey_story_detail.html', story=story)
 
 
 @app.route('/offline')
@@ -617,10 +729,36 @@ def index():
 @app.route('/admin/messages')
 def admin_messages():
     """Public mesajlari listeler."""
-    messages = query_db('''
+    status = request.args.get('durum', '').strip()
+    category = request.args.get('kategori', '').strip()
+    search = request.args.get('q', '').strip()
+    params = []
+    conditions = []
+    if status in PUBLIC_MESSAGE_STATUSES:
+        conditions.append('durum = ?')
+        params.append(status)
+    if category in PUBLIC_MESSAGE_CATEGORIES:
+        conditions.append('kategori = ?')
+        params.append(category)
+    if search:
+        like = f"%{search.lower()}%"
+        conditions.append('''
+            (
+                lower(ad) LIKE ?
+                OR lower(COALESCE(iletisim, '')) LIKE ?
+                OR lower(COALESCE(konu, '')) LIKE ?
+                OR lower(mesaj) LIKE ?
+                OR lower(COALESCE(yanit_notu, '')) LIKE ?
+            )
+        ''')
+        params.extend([like, like, like, like, like])
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ''
+
+    messages = query_db(f'''
         SELECT * FROM public_messages
+        {where_sql}
         ORDER BY okundu ASC, olusturma_tarihi DESC
-    ''')
+    ''', params)
     unread_count = query_db(
         'SELECT COUNT(*) as count FROM public_messages WHERE okundu = 0',
         one=True
@@ -629,6 +767,11 @@ def admin_messages():
         'public_messages.html',
         messages=messages,
         unread_count=unread_count['count'] if unread_count else 0,
+        statuses=PUBLIC_MESSAGE_STATUSES,
+        categories=PUBLIC_MESSAGE_CATEGORIES,
+        selected_status=status,
+        selected_category=category,
+        search=search,
     )
 
 
@@ -636,11 +779,344 @@ def admin_messages():
 def admin_message_mark_read(id):
     """Mesaji okundu olarak isaretler."""
     execute_db(
-        "UPDATE public_messages SET okundu = 1, okundu_tarihi = datetime('now', 'localtime') WHERE id = ?",
+        """UPDATE public_messages
+           SET okundu = 1, durum = 'Okundu', okundu_tarihi = datetime('now', 'localtime')
+           WHERE id = ?""",
         (id,)
     )
     flash('Mesaj okundu olarak işaretlendi.', 'success')
-    return redirect(url_for('admin_messages'))
+    return redirect_to_next('admin_messages')
+
+
+@app.route('/admin/messages/<int:id>/status', methods=['POST'])
+def admin_message_update_status(id):
+    """Mesaj durumunu ve yanit notunu gunceller."""
+    status = request.form.get('durum', 'Yeni')
+    note = request.form.get('yanit_notu', '').strip()
+    if status not in PUBLIC_MESSAGE_STATUSES:
+        flash('Mesaj durumu geçersiz.', 'error')
+        return redirect_to_next('admin_messages')
+
+    read = 0 if status == 'Yeni' else 1
+    read_at_sql = ", okundu_tarihi = COALESCE(okundu_tarihi, datetime('now', 'localtime'))" if read else ", okundu_tarihi = NULL"
+    execute_db(f'''
+        UPDATE public_messages
+        SET durum = ?, yanit_notu = ?, okundu = ?{read_at_sql}
+        WHERE id = ?
+    ''', (status, note or None, read, id))
+    flash('Mesaj durumu güncellendi.', 'success')
+    return redirect_to_next('admin_messages')
+
+
+@app.route('/admin/content')
+def admin_content():
+    """Public icerik yonetimi ana sayfasi."""
+    post_count = query_db('SELECT COUNT(*) as count FROM public_posts', one=True)
+    story_count = query_db('SELECT COUNT(*) as count FROM honey_stories', one=True)
+    return render_template(
+        'admin_content.html',
+        post_count=post_count['count'] if post_count else 0,
+        story_count=story_count['count'] if story_count else 0,
+    )
+
+
+@app.route('/admin/posts')
+def admin_posts():
+    """Sezon gunlugu yazilarini listeler."""
+    posts = query_db('SELECT * FROM public_posts ORDER BY yayin_tarihi DESC, id DESC')
+    return render_template('admin_posts.html', posts=posts)
+
+
+@app.route('/admin/posts/new', methods=['GET', 'POST'])
+def admin_post_new():
+    """Yeni sezon gunlugu yazisi."""
+    if request.method == 'POST':
+        baslik = request.form.get('baslik', '').strip()
+        kategori = request.form.get('kategori', 'Duyuru')
+        ozet = request.form.get('ozet', '').strip()
+        icerik = request.form.get('icerik', '').strip()
+        yayin_tarihi = request.form.get('yayin_tarihi', '').strip()
+        yayinla = 1 if request.form.get('yayinla') else 0
+
+        yayin_tarihi, date_error = validate_date(yayin_tarihi, 'Yayın tarihi')
+        errors = [date_error]
+        if not baslik:
+            errors.append('Başlık zorunludur.')
+        if not icerik:
+            errors.append('İçerik zorunludur.')
+        if kategori not in PUBLIC_POST_CATEGORIES:
+            errors.append('Kategori geçersiz.')
+        if any(errors):
+            flash_errors(errors)
+            return render_template('admin_post_form.html', post=None, categories=PUBLIC_POST_CATEGORIES)
+
+        fotograf_yolu = None
+        file = request.files.get('fotograf')
+        if file and file.filename:
+            fotograf_yolu = save_upload(file)
+
+        execute_db('''
+            INSERT INTO public_posts
+            (baslik, kategori, ozet, icerik, fotograf_yolu, yayinla, yayin_tarihi)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (baslik, kategori, ozet or None, icerik, fotograf_yolu, yayinla,
+              yayin_tarihi or datetime.now().strftime('%Y-%m-%d')))
+        flash('Günlük yazısı eklendi.', 'success')
+        return redirect(url_for('admin_posts'))
+
+    return render_template('admin_post_form.html', post=None, categories=PUBLIC_POST_CATEGORIES)
+
+
+@app.route('/admin/posts/<int:id>/edit', methods=['GET', 'POST'])
+def admin_post_edit(id):
+    """Sezon gunlugu yazisini duzenler."""
+    post = query_db('SELECT * FROM public_posts WHERE id = ?', (id,), one=True)
+    if not post:
+        flash('Yazı bulunamadı.', 'error')
+        return redirect(url_for('admin_posts'))
+
+    if request.method == 'POST':
+        baslik = request.form.get('baslik', '').strip()
+        kategori = request.form.get('kategori', 'Duyuru')
+        ozet = request.form.get('ozet', '').strip()
+        icerik = request.form.get('icerik', '').strip()
+        yayin_tarihi = request.form.get('yayin_tarihi', '').strip()
+        yayinla = 1 if request.form.get('yayinla') else 0
+
+        yayin_tarihi, date_error = validate_date(yayin_tarihi, 'Yayın tarihi')
+        errors = [date_error]
+        if not baslik:
+            errors.append('Başlık zorunludur.')
+        if not icerik:
+            errors.append('İçerik zorunludur.')
+        if kategori not in PUBLIC_POST_CATEGORIES:
+            errors.append('Kategori geçersiz.')
+        if any(errors):
+            flash_errors(errors)
+            return render_template('admin_post_form.html', post=post, categories=PUBLIC_POST_CATEGORIES)
+
+        fotograf_yolu = post['fotograf_yolu']
+        file = request.files.get('fotograf')
+        if file and file.filename:
+            new_photo = save_upload(file)
+            if new_photo:
+                fotograf_yolu = new_photo
+
+        execute_db('''
+            UPDATE public_posts
+            SET baslik=?, kategori=?, ozet=?, icerik=?, fotograf_yolu=?, yayinla=?,
+                yayin_tarihi=?, guncelleme_tarihi=datetime('now', 'localtime')
+            WHERE id=?
+        ''', (baslik, kategori, ozet or None, icerik, fotograf_yolu, yayinla,
+              yayin_tarihi or datetime.now().strftime('%Y-%m-%d'), id))
+        flash('Günlük yazısı güncellendi.', 'success')
+        return redirect(url_for('admin_posts'))
+
+    return render_template('admin_post_form.html', post=post, categories=PUBLIC_POST_CATEGORIES)
+
+
+@app.route('/admin/honey-stories')
+def admin_honey_stories():
+    """Bal hikayelerini listeler."""
+    stories = query_db('SELECT * FROM honey_stories ORDER BY yayin_tarihi DESC, id DESC')
+    return render_template('admin_honey_stories.html', stories=stories)
+
+
+@app.route('/admin/honey-stories/new', methods=['GET', 'POST'])
+def admin_honey_story_new():
+    """Yeni bal hikayesi."""
+    if request.method == 'POST':
+        data = {
+            'baslik': request.form.get('baslik', '').strip(),
+            'hasat_donemi': request.form.get('hasat_donemi', '').strip(),
+            'bolge_notu': request.form.get('bolge_notu', '').strip(),
+            'flora_notu': request.form.get('flora_notu', '').strip(),
+            'tadim_notu': request.form.get('tadim_notu', '').strip(),
+            'saklama_notu': request.form.get('saklama_notu', '').strip(),
+            'yayin_tarihi': request.form.get('yayin_tarihi', '').strip(),
+        }
+        data['yayin_tarihi'], date_error = validate_date(data['yayin_tarihi'], 'Yayın tarihi')
+        errors = [date_error]
+        if not data['baslik']:
+            errors.append('Başlık zorunludur.')
+        if any(errors):
+            flash_errors(errors)
+            return render_template('admin_honey_story_form.html', story=data)
+
+        fotograf_yolu = None
+        file = request.files.get('fotograf')
+        if file and file.filename:
+            fotograf_yolu = save_upload(file)
+
+        execute_db('''
+            INSERT INTO honey_stories
+            (baslik, hasat_donemi, bolge_notu, flora_notu, tadim_notu, saklama_notu,
+             fotograf_yolu, yayinla, yayin_tarihi)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data['baslik'], data['hasat_donemi'] or None, data['bolge_notu'] or None,
+            data['flora_notu'] or None, data['tadim_notu'] or None,
+            data['saklama_notu'] or None, fotograf_yolu,
+            1 if request.form.get('yayinla') else 0,
+            data['yayin_tarihi'] or datetime.now().strftime('%Y-%m-%d'),
+        ))
+        flash('Bal hikayesi eklendi.', 'success')
+        return redirect(url_for('admin_honey_stories'))
+
+    return render_template('admin_honey_story_form.html', story=None)
+
+
+@app.route('/admin/honey-stories/<int:id>/edit', methods=['GET', 'POST'])
+def admin_honey_story_edit(id):
+    """Bal hikayesini duzenler."""
+    story = query_db('SELECT * FROM honey_stories WHERE id = ?', (id,), one=True)
+    if not story:
+        flash('Bal hikayesi bulunamadı.', 'error')
+        return redirect(url_for('admin_honey_stories'))
+
+    if request.method == 'POST':
+        data = {
+            'baslik': request.form.get('baslik', '').strip(),
+            'hasat_donemi': request.form.get('hasat_donemi', '').strip(),
+            'bolge_notu': request.form.get('bolge_notu', '').strip(),
+            'flora_notu': request.form.get('flora_notu', '').strip(),
+            'tadim_notu': request.form.get('tadim_notu', '').strip(),
+            'saklama_notu': request.form.get('saklama_notu', '').strip(),
+            'yayin_tarihi': request.form.get('yayin_tarihi', '').strip(),
+        }
+        data['yayin_tarihi'], date_error = validate_date(data['yayin_tarihi'], 'Yayın tarihi')
+        errors = [date_error]
+        if not data['baslik']:
+            errors.append('Başlık zorunludur.')
+        if any(errors):
+            flash_errors(errors)
+            return render_template('admin_honey_story_form.html', story=story)
+
+        fotograf_yolu = story['fotograf_yolu']
+        file = request.files.get('fotograf')
+        if file and file.filename:
+            new_photo = save_upload(file)
+            if new_photo:
+                fotograf_yolu = new_photo
+
+        execute_db('''
+            UPDATE honey_stories
+            SET baslik=?, hasat_donemi=?, bolge_notu=?, flora_notu=?, tadim_notu=?,
+                saklama_notu=?, fotograf_yolu=?, yayinla=?, yayin_tarihi=?,
+                guncelleme_tarihi=datetime('now', 'localtime')
+            WHERE id=?
+        ''', (
+            data['baslik'], data['hasat_donemi'] or None, data['bolge_notu'] or None,
+            data['flora_notu'] or None, data['tadim_notu'] or None,
+            data['saklama_notu'] or None, fotograf_yolu,
+            1 if request.form.get('yayinla') else 0,
+            data['yayin_tarihi'] or datetime.now().strftime('%Y-%m-%d'), id,
+        ))
+        flash('Bal hikayesi güncellendi.', 'success')
+        return redirect(url_for('admin_honey_stories'))
+
+    return render_template('admin_honey_story_form.html', story=story)
+
+
+@app.route('/admin/hives')
+def admin_hives():
+    """Ogul ve sabit kovanlari tablo halinde listeler."""
+    hive_type = request.args.get('tip', 'all')
+    active_filter = request.args.get('aktif', 'all')
+    query = request.args.get('q', '').strip()
+    if hive_type not in {'all', 'fixed', 'swarm'}:
+        hive_type = 'all'
+    if active_filter not in {'all', '0', '1'}:
+        active_filter = 'all'
+
+    fixed_conditions = []
+    fixed_params = []
+    swarm_conditions = []
+    swarm_params = []
+
+    if active_filter in {'0', '1'}:
+        fixed_conditions.append('fh.aktif = ?')
+        fixed_params.append(int(active_filter))
+        swarm_conditions.append('aktif = ?')
+        swarm_params.append(int(active_filter))
+    if query:
+        like = f"%{query.lower()}%"
+        fixed_conditions.append('(lower(fh.kovan_no) LIKE ? OR lower(a.arilik_adi) LIKE ? OR lower(fh.durum) LIKE ?)')
+        fixed_params.extend([like, like, like])
+        swarm_conditions.append('(lower(ad) LIKE ? OR lower(durum) LIKE ?)')
+        swarm_params.extend([like, like])
+
+    fixed_where = f"WHERE {' AND '.join(fixed_conditions)}" if fixed_conditions else ''
+    swarm_where = f"WHERE {' AND '.join(swarm_conditions)}" if swarm_conditions else ''
+
+    fixed_hives = []
+    swarm_hives = []
+    if hive_type in {'all', 'fixed'}:
+        fixed_hives = query_db(f'''
+            SELECT fh.*, a.arilik_adi
+            FROM fixed_hives fh
+            JOIN apiaries a ON fh.arilik_id = a.id
+            {fixed_where}
+            ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no
+        ''', fixed_params)
+    if hive_type in {'all', 'swarm'}:
+        swarm_hives = query_db(f'''
+            SELECT * FROM swarm_hives
+            {swarm_where}
+            ORDER BY aktif DESC, son_kontrol_tarihi DESC, ad
+        ''', swarm_params)
+
+    return render_template(
+        'admin_hives.html',
+        fixed_hives=fixed_hives,
+        swarm_hives=swarm_hives,
+        total_count=len(fixed_hives) + len(swarm_hives),
+        selected_type=hive_type,
+        active_filter=active_filter,
+        query=query,
+        fixed_statuses=FIXED_HIVE_STATUSES,
+        swarm_statuses=SWARM_STATUSES,
+    )
+
+
+@app.route('/admin/hives/swarm/<int:id>/quick-update', methods=['POST'])
+def admin_swarm_quick_update(id):
+    """Tablodan ogul kovani hizli guncelleme."""
+    durum = request.form.get('durum', 'Boş')
+    son_kontrol_tarihi = request.form.get('son_kontrol_tarihi', '').strip()
+    aktif = 1 if request.form.get('aktif') else 0
+    durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
+    son_kontrol_tarihi, date_error = validate_date(son_kontrol_tarihi, 'Son kontrol tarihi')
+    if status_error or date_error:
+        flash_errors([status_error, date_error])
+    else:
+        execute_db('''
+            UPDATE swarm_hives
+            SET durum=?, son_kontrol_tarihi=?, aktif=?, guncelleme_tarihi=datetime('now', 'localtime')
+            WHERE id=?
+        ''', (durum, son_kontrol_tarihi or None, aktif, id))
+        flash('Oğul kovanı güncellendi.', 'success')
+    return redirect_to_next('admin_hives')
+
+
+@app.route('/admin/hives/fixed/<int:id>/quick-update', methods=['POST'])
+def admin_fixed_quick_update(id):
+    """Tablodan sabit kovan hizli guncelleme."""
+    durum = request.form.get('durum', 'Orta')
+    son_kontrol_tarihi = request.form.get('son_kontrol_tarihi', '').strip()
+    aktif = 1 if request.form.get('aktif') else 0
+    durum, status_error = validate_choice(durum, FIXED_HIVE_STATUSES, 'Durum')
+    son_kontrol_tarihi, date_error = validate_date(son_kontrol_tarihi, 'Son kontrol tarihi')
+    if status_error or date_error:
+        flash_errors([status_error, date_error])
+    else:
+        execute_db('''
+            UPDATE fixed_hives
+            SET durum=?, son_kontrol_tarihi=?, aktif=?, guncelleme_tarihi=datetime('now', 'localtime')
+            WHERE id=?
+        ''', (durum, son_kontrol_tarihi or None, aktif, id))
+        flash('Sabit kovan güncellendi.', 'success')
+    return redirect_to_next('admin_hives')
 
 
 # ---------------------------------------------------------------------------

@@ -46,7 +46,21 @@
         }
     );
 
-    standardLayer.addTo(map);
+    satelliteLayer.addTo(map);
+
+    const guideTargets = new Map();
+    let guidance = {
+        watchId: null,
+        target: null,
+        userMarker: null,
+        accuracyCircle: null,
+        line: null,
+        arrowMarker: null,
+        distanceLabel: null,
+        control: null,
+        panelEl: null,
+        hasCentered: false
+    };
 
     // --- Marker renk belirleme ---
     function getSwarmColor(durum, aktif, overdue) {
@@ -106,7 +120,7 @@
     }
 
     // --- Popup HTML olusturma (genel) ---
-    function createPopupContent(item) {
+    function createPopupContent(item, targetType) {
         const name = item.ad || item.kovan_no || item.arilik_adi || 'Bilinmiyor';
         const durum = item.durum || '';
         const sonKontrol = item.son_kontrol_tarihi
@@ -127,6 +141,7 @@
         const lng = item.longitude;
         const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
         const detailUrl = item.detail_url || '#';
+        const guideKey = registerGuideTarget(targetType || 'target', item.id, name, lat, lng);
 
         return `
             <div>
@@ -140,6 +155,7 @@
                 <div class="popup-actions">
                     <a href="${detailUrl}" class="popup-detail-btn">Detay</a>
                     <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
+                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
                 </div>
             </div>
         `;
@@ -148,6 +164,7 @@
     // --- Arilik popup'i (istatistiklerle) ---
     function createApiaryPopupContent(item) {
         const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`;
+        const guideKey = registerGuideTarget('apiary', item.id, item.arilik_adi, item.latitude, item.longitude);
 
         let statsHtml = '';
         const toplam = item.toplam_kovan_sayisi || 0;
@@ -172,6 +189,7 @@
                 <div class="popup-actions">
                     <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
                     <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
+                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
                 </div>
             </div>
         `;
@@ -184,6 +202,7 @@
         const sonKontrol = item.son_kontrol_tarihi
             ? formatDate(item.son_kontrol_tarihi)
             : 'Hiç kontrol edilmedi';
+        const guideKey = registerGuideTarget('fixed', item.id, displayName, item.latitude, item.longitude);
 
         let overdueWarning = '';
         if (item.overdue) {
@@ -200,12 +219,27 @@
                 </div>
                 <div class="popup-actions">
                     <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
+                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
                 </div>
             </div>
         `;
     }
 
     // --- Yardimci fonksiyonlar ---
+    function registerGuideTarget(type, id, name, lat, lng) {
+        const key = `${type}:${id}`;
+        const target = {
+            key,
+            name: name || 'Hedef',
+            lat: Number(lat),
+            lng: Number(lng)
+        };
+        if (Number.isFinite(target.lat) && Number.isFinite(target.lng)) {
+            guideTargets.set(key, target);
+        }
+        return key;
+    }
+
     function formatDate(dateStr) {
         if (!dateStr) return 'Belirtilmedi';
         try {
@@ -221,6 +255,257 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function formatDistance(meters) {
+        if (!Number.isFinite(meters)) return 'Ölçülemiyor';
+        if (meters < 1000) return `${Math.round(meters)} m`;
+        if (meters < 10000) return `${(meters / 1000).toFixed(2)} km`;
+        return `${(meters / 1000).toFixed(1)} km`;
+    }
+
+    function calculateBearing(fromLatLng, toLatLng) {
+        const lat1 = fromLatLng.lat * Math.PI / 180;
+        const lat2 = toLatLng.lat * Math.PI / 180;
+        const deltaLng = (toLatLng.lng - fromLatLng.lng) * Math.PI / 180;
+        const y = Math.sin(deltaLng) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) -
+            Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function bearingToCompass(bearing) {
+        const directions = ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'];
+        return directions[Math.round(bearing / 45) % directions.length];
+    }
+
+    function createArrowIcon(bearing) {
+        return L.divIcon({
+            html: `<div class="guidance-arrow-inner" style="transform: rotate(${bearing}deg);">▲</div>`,
+            className: 'guidance-arrow-icon',
+            iconSize: [38, 38],
+            iconAnchor: [19, 19]
+        });
+    }
+
+    function ensureGuidanceControl() {
+        if (guidance.control) return;
+
+        const control = L.control({ position: 'bottomright' });
+        control.onAdd = function () {
+            const div = L.DomUtil.create('div', 'guidance-panel');
+            L.DomEvent.disableClickPropagation(div);
+            L.DomEvent.disableScrollPropagation(div);
+            guidance.panelEl = div;
+            return div;
+        };
+        control.addTo(map);
+        guidance.control = control;
+    }
+
+    function renderGuidancePanel(data) {
+        ensureGuidanceControl();
+        if (!guidance.panelEl || !guidance.target) return;
+
+        const targetName = escapeHtml(guidance.target.name);
+        const distance = data ? formatDistance(data.distance) : 'Konum bekleniyor';
+        const direction = data ? `${Math.round(data.bearing)}° ${bearingToCompass(data.bearing)}` : 'Konum bekleniyor';
+        const accuracy = data && Number.isFinite(data.accuracy)
+            ? `Konum hassasiyeti: ~${Math.round(data.accuracy)} m`
+            : 'Konum izni bekleniyor';
+
+        guidance.panelEl.innerHTML = `
+            <div class="guidance-panel-title">Kuş Uçumu</div>
+            <div class="guidance-panel-target">${targetName}</div>
+            <div class="guidance-panel-main">
+                <strong>${distance}</strong>
+                <span>${direction}</span>
+            </div>
+            <div class="guidance-panel-note">${accuracy}</div>
+            <button type="button" class="guidance-stop-btn">Bitir</button>
+        `;
+
+        const stopBtn = guidance.panelEl.querySelector('.guidance-stop-btn');
+        if (stopBtn) {
+            stopBtn.addEventListener('click', stopGuidance);
+        }
+    }
+
+    function showGuidanceError(message) {
+        ensureGuidanceControl();
+        if (!guidance.panelEl || !guidance.target) return;
+        guidance.panelEl.innerHTML = `
+            <div class="guidance-panel-title">Kuş Uçumu</div>
+            <div class="guidance-panel-target">${escapeHtml(guidance.target.name)}</div>
+            <div class="guidance-panel-note guidance-error">${escapeHtml(message)}</div>
+            <button type="button" class="guidance-stop-btn">Bitir</button>
+        `;
+        const stopBtn = guidance.panelEl.querySelector('.guidance-stop-btn');
+        if (stopBtn) {
+            stopBtn.addEventListener('click', stopGuidance);
+        }
+    }
+
+    function startGuidance(target) {
+        if (!target || !Number.isFinite(target.lat) || !Number.isFinite(target.lng)) {
+            alert('Bu hedef için koordinat bulunamadı.');
+            return;
+        }
+        if (!navigator.geolocation) {
+            alert('Tarayıcınız konum desteği sunmuyor.');
+            return;
+        }
+
+        stopGuidance();
+        guidance.target = target;
+        guidance.hasCentered = false;
+        renderGuidancePanel(null);
+        map.closePopup();
+
+        guidance.watchId = navigator.geolocation.watchPosition(
+            updateGuidance,
+            function (error) {
+                let message = 'Konum alınamadı.';
+                if (error.code === error.PERMISSION_DENIED) {
+                    message = 'Konum izni verilmedi.';
+                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                    message = 'Konum bilgisi şu anda kullanılamıyor.';
+                } else if (error.code === error.TIMEOUT) {
+                    message = 'Konum alma süresi doldu.';
+                }
+                showGuidanceError(message);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 2000,
+                timeout: 15000
+            }
+        );
+    }
+
+    function updateGuidance(position) {
+        if (!guidance.target) return;
+
+        const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+        const targetLatLng = L.latLng(guidance.target.lat, guidance.target.lng);
+        const distance = userLatLng.distanceTo(targetLatLng);
+        const bearing = calculateBearing(userLatLng, targetLatLng);
+        const accuracy = position.coords.accuracy;
+        const midpoint = L.latLng(
+            (userLatLng.lat + targetLatLng.lat) / 2,
+            (userLatLng.lng + targetLatLng.lng) / 2
+        );
+
+        if (!guidance.userMarker) {
+            guidance.userMarker = L.circleMarker(userLatLng, {
+                radius: 7,
+                color: '#FFFFFF',
+                weight: 3,
+                fillColor: '#1565C0',
+                fillOpacity: 1
+            }).addTo(map);
+        } else {
+            guidance.userMarker.setLatLng(userLatLng);
+        }
+
+        if (!guidance.accuracyCircle) {
+            guidance.accuracyCircle = L.circle(userLatLng, {
+                radius: accuracy || 0,
+                color: '#1565C0',
+                weight: 1,
+                fillColor: '#1565C0',
+                fillOpacity: 0.08
+            }).addTo(map);
+        } else {
+            guidance.accuracyCircle.setLatLng(userLatLng);
+            guidance.accuracyCircle.setRadius(accuracy || 0);
+        }
+
+        if (!guidance.line) {
+            guidance.line = L.polyline([userLatLng, targetLatLng], {
+                color: '#F9A825',
+                weight: 4,
+                opacity: 0.95,
+                dashArray: '8, 10'
+            }).addTo(map);
+        } else {
+            guidance.line.setLatLngs([userLatLng, targetLatLng]);
+        }
+
+        if (!guidance.arrowMarker) {
+            guidance.arrowMarker = L.marker(userLatLng, {
+                icon: createArrowIcon(bearing),
+                interactive: false,
+                zIndexOffset: 900
+            }).addTo(map);
+        } else {
+            guidance.arrowMarker.setLatLng(userLatLng);
+            guidance.arrowMarker.setIcon(createArrowIcon(bearing));
+        }
+
+        const distanceLabelHtml = `
+            <div class="guidance-distance-label">
+                ${formatDistance(distance)} · ${Math.round(bearing)}° ${bearingToCompass(bearing)}
+            </div>
+        `;
+        if (!guidance.distanceLabel) {
+            guidance.distanceLabel = L.marker(midpoint, {
+                icon: L.divIcon({
+                    html: distanceLabelHtml,
+                    className: 'guidance-distance-icon',
+                    iconSize: [150, 30],
+                    iconAnchor: [75, 15]
+                }),
+                interactive: false
+            }).addTo(map);
+        } else {
+            guidance.distanceLabel.setLatLng(midpoint);
+            guidance.distanceLabel.setIcon(L.divIcon({
+                html: distanceLabelHtml,
+                className: 'guidance-distance-icon',
+                iconSize: [150, 30],
+                iconAnchor: [75, 15]
+            }));
+        }
+
+        renderGuidancePanel({ distance, bearing, accuracy });
+
+        if (!guidance.hasCentered) {
+            map.fitBounds(L.latLngBounds([userLatLng, targetLatLng]), {
+                padding: [56, 56],
+                maxZoom: 18
+            });
+            guidance.hasCentered = true;
+        }
+    }
+
+    function stopGuidance() {
+        if (guidance.watchId !== null && navigator.geolocation) {
+            navigator.geolocation.clearWatch(guidance.watchId);
+        }
+
+        ['userMarker', 'accuracyCircle', 'line', 'arrowMarker', 'distanceLabel'].forEach(function (key) {
+            if (guidance[key]) {
+                map.removeLayer(guidance[key]);
+            }
+        });
+
+        if (guidance.control) {
+            guidance.control.remove();
+        }
+
+        guidance = {
+            watchId: null,
+            target: null,
+            userMarker: null,
+            accuracyCircle: null,
+            line: null,
+            arrowMarker: null,
+            distanceLabel: null,
+            control: null,
+            panelEl: null,
+            hasCentered: false
+        };
     }
 
     // --- Ust uste binen kovanlar icin offset hesapla ---
@@ -287,7 +572,7 @@
                         const color = getSwarmColor(item.durum, item.aktif, item.overdue);
                         const icon = createIcon(color, 'swarm');
                         const marker = L.marker([item.latitude, item.longitude], { icon });
-                        marker.bindPopup(createPopupContent(item), { maxWidth: 260 });
+                        marker.bindPopup(createPopupContent(item, 'swarm'), { maxWidth: 280 });
 
                         // Pasif: sadece pasif katmanina
                         if (!item.aktif || item.durum === 'Taşındı' || item.durum === 'İptal edildi') {
@@ -361,6 +646,18 @@
 
     // Sayfa yuklenince verileri cek
     loadMapData();
+
+    map.getContainer().addEventListener('click', function (event) {
+        const button = event.target.closest ? event.target.closest('.popup-guide-btn') : null;
+        if (!button) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const target = guideTargets.get(button.dataset.guideKey);
+        if (target) {
+            startGuidance(target);
+        }
+    });
 
     // Custom marker stili (CSS class)
     const style = document.createElement('style');

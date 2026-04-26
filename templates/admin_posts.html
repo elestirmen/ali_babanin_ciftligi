@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Sezon Günlüğü Yönetimi - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Sezon Günlüğü</h1>
+            <div class="subtitle">Public ana sayfadaki “Bu hafta arılıkta” notlarını yönetin.</div>
+        </div>
+        <a href="{{ url_for('admin_post_new') }}" class="btn btn-accent">Yeni Yazı</a>
+    </div>
+
+    {% if posts %}
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Başlık</th>
+                        <th>Kategori</th>
+                        <th>Yayın Tarihi</th>
+                        <th>Durum</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for post in posts %}
+                        <tr>
+                            <td>{{ post.baslik }}</td>
+                            <td>{{ post.kategori }}</td>
+                            <td>{{ post.yayin_tarihi|format_date }}</td>
+                            <td>{% if post.yayinla %}<span class="badge badge-green">Yayında</span>{% else %}<span class="badge badge-gray">Taslak</span>{% endif %}</td>
+                            <td><a href="{{ url_for('admin_post_edit', id=post.id) }}" class="btn btn-outline btn-sm">Düzenle</a></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <h3>Henüz yazı yok</h3>
+            <p>Public günlük için ilk kısa sezon notunu ekleyin.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

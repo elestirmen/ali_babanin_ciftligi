@@ -43,7 +43,7 @@
 
     const map = L.map(mapEl, {
         zoomControl: true,
-        layers: [standardLayer]
+        layers: [satelliteLayer]
     }).setView(
         hasExistingPoint ? [existingLat, existingLng] : [defaultLat, defaultLng],
         hasExistingPoint ? 16 : 13

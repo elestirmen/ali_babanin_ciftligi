@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ story.baslik }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-form-container">
+    <a href="{{ url_for('public_honey_stories') }}" class="back-link">← Bal Hikâyeleri</a>
+    <div class="page-header">
+        <div>
+            <h1>{{ story.baslik }}</h1>
+            <div class="subtitle">{{ story.hasat_donemi or story.yayin_tarihi|format_date }}</div>
+        </div>
+    </div>
+
+    {% if story.fotograf_yolu %}
+        <div class="photo-container">
+            <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+        </div>
+    {% endif %}
+
+    <div class="story-detail">
+        {% if story.bolge_notu %}
+            <section><h2>Bölge</h2><p>{{ story.bolge_notu }}</p></section>
+        {% endif %}
+        {% if story.flora_notu %}
+            <section><h2>Flora</h2><p>{{ story.flora_notu }}</p></section>
+        {% endif %}
+        {% if story.tadim_notu %}
+            <section><h2>Tadım Notu</h2><p>{{ story.tadim_notu }}</p></section>
+        {% endif %}
+        {% if story.saklama_notu %}
+            <section><h2>Saklama</h2><p>{{ story.saklama_notu }}</p></section>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -46,6 +46,14 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def fetch_one(self, query, args=()):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            return conn.execute(query, args).fetchone()
+        finally:
+            conn.close()
+
     def test_public_home_is_visible_and_admin_requires_login(self):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
@@ -73,6 +81,30 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['Location'], '/mesaj-birak')
         self.assertEqual(self.count_rows('public_messages'), 1)
+        message = self.fetch_one('SELECT kategori FROM public_messages')
+        self.assertEqual(message['kategori'], 'Diğer')
+
+    def test_admin_message_filters_and_status_update(self):
+        token = self.login()
+        app_module.execute_db('''
+            INSERT INTO public_messages (ad, iletisim, kategori, konu, mesaj)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('Ziyaretci', 'ziyaretci@example.com', 'Ziyaret talebi', 'Ziyaret', 'Hafta sonu gelebilir miyiz?'))
+
+        response = self.client.get('/admin/messages?durum=Yeni&kategori=Ziyaret+talebi&q=hafta')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Ziyaretci', response.data)
+
+        response = self.client.post('/admin/messages/1/status', data={
+            'csrf_token': token,
+            'durum': 'Ziyaret planlandı',
+            'yanit_notu': 'Cumartesi uygun.',
+        })
+        self.assertEqual(response.status_code, 302)
+        message = self.fetch_one('SELECT durum, yanit_notu, okundu FROM public_messages WHERE id = 1')
+        self.assertEqual(message['durum'], 'Ziyaret planlandı')
+        self.assertEqual(message['yanit_notu'], 'Cumartesi uygun.')
+        self.assertEqual(message['okundu'], 1)
 
     def test_admin_messages_require_login(self):
         response = self.client.get('/admin/messages')
@@ -142,6 +174,53 @@ class AppSecurityAndValidationTests(unittest.TestCase):
             app_module.PUBLIC_URL = previous_public_url
 
         self.assertEqual(url, 'https://alibaba.urgup.keenetic.link/fixed-hives/7')
+
+    def test_admin_hives_table_and_quick_updates(self):
+        token = self.login()
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi) VALUES (?)',
+            ('Ana Arilik',)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, sira_no, konum_no, durum, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (apiary_id, 'K1', 1, 1, 'Orta', '2026-04-20', 1)
+        )
+        swarm_id = app_module.execute_db(
+            '''INSERT INTO swarm_hives
+               (ad, durum, son_kontrol_tarihi, aktif)
+               VALUES (?, ?, ?, ?)''',
+            ('Dere Kenari', 'Boş', '2026-04-20', 1)
+        )
+
+        response = self.client.get('/admin/hives')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Dere Kenari', response.data)
+        self.assertIn(b'K1', response.data)
+
+        response = self.client.post(f'/admin/hives/fixed/{fixed_id}/quick-update', data={
+            'csrf_token': token,
+            'durum': 'Güçlü',
+            'son_kontrol_tarihi': '2026-04-26',
+            'aktif': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        fixed = self.fetch_one('SELECT durum, son_kontrol_tarihi, aktif FROM fixed_hives WHERE id = ?', (fixed_id,))
+        self.assertEqual(fixed['durum'], 'Güçlü')
+        self.assertEqual(fixed['son_kontrol_tarihi'], '2026-04-26')
+        self.assertEqual(fixed['aktif'], 1)
+
+        response = self.client.post(f'/admin/hives/swarm/{swarm_id}/quick-update', data={
+            'csrf_token': token,
+            'durum': 'Oğul girdi',
+            'son_kontrol_tarihi': '2026-04-26',
+        })
+        self.assertEqual(response.status_code, 302)
+        swarm = self.fetch_one('SELECT durum, son_kontrol_tarihi, aktif FROM swarm_hives WHERE id = ?', (swarm_id,))
+        self.assertEqual(swarm['durum'], 'Oğul girdi')
+        self.assertEqual(swarm['son_kontrol_tarihi'], '2026-04-26')
+        self.assertEqual(swarm['aktif'], 0)
 
 
 if __name__ == '__main__':

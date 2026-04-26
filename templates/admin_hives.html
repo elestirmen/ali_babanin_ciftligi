@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Kovan Tablosu - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container admin-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Kovan Tablosu</h1>
+            <div class="subtitle">{{ total_count }} kayıt listeleniyor. Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın.</div>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">Yeni Oğul</a>
+            <a href="{{ url_for('apiary_list') }}" class="btn btn-accent">Arılıklar</a>
+        </div>
+    </div>
+
+    <form method="GET" class="table-filter-bar">
+        <input type="search" name="q" class="form-control" value="{{ query }}" placeholder="Kovan, arılık veya durum ara">
+        <select name="tip" class="form-control">
+            <option value="all" {% if selected_type == 'all' %}selected{% endif %}>Tüm kovanlar</option>
+            <option value="swarm" {% if selected_type == 'swarm' %}selected{% endif %}>Oğul kovanları</option>
+            <option value="fixed" {% if selected_type == 'fixed' %}selected{% endif %}>Sabit kovanlar</option>
+        </select>
+        <select name="aktif" class="form-control">
+            <option value="all" {% if active_filter == 'all' %}selected{% endif %}>Aktif + pasif</option>
+            <option value="1" {% if active_filter == '1' %}selected{% endif %}>Sadece aktif</option>
+            <option value="0" {% if active_filter == '0' %}selected{% endif %}>Sadece pasif</option>
+        </select>
+        <button type="submit" class="btn btn-primary">Filtrele</button>
+    </form>
+
+    {% if selected_type in ['all', 'swarm'] %}
+        <h2 class="table-section-title">Oğul Kovanları</h2>
+        {% if swarm_hives %}
+            <div class="admin-table-wrap">
+                <table class="admin-table hive-admin-table">
+                    <thead>
+                        <tr>
+                            <th>Ad</th>
+                            <th>Durum</th>
+                            <th>Son Kontrol</th>
+                            <th>Aktif</th>
+                            <th>Hızlı Güncelle</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hive in swarm_hives %}
+                            <tr>
+                                <td><strong>{{ hive.ad }}</strong></td>
+                                <td>{{ hive.durum }}</td>
+                                <td>{{ hive.son_kontrol_tarihi|format_date }}</td>
+                                <td>{% if hive.aktif %}<span class="badge badge-green">Aktif</span>{% else %}<span class="badge badge-gray">Pasif</span>{% endif %}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin_swarm_quick_update', id=hive.id) }}" class="quick-update-form">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                                        <select name="durum" class="form-control">
+                                            {% for status in swarm_statuses %}
+                                                <option value="{{ status }}" {% if hive.durum == status %}selected{% endif %}>{{ status }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="date" name="son_kontrol_tarihi" class="form-control" value="{{ hive.son_kontrol_tarihi or '' }}">
+                                        <label class="mini-check"><input type="checkbox" name="aktif" {% if hive.aktif %}checked{% endif %}> Aktif</label>
+                                        <button type="submit" class="btn btn-primary btn-sm">Kaydet</button>
+                                    </form>
+                                </td>
+                                <td class="table-actions">
+                                    <a href="{{ url_for('swarm_detail', id=hive.id) }}" class="btn btn-outline btn-sm">Detay</a>
+                                    <a href="{{ url_for('swarm_edit', id=hive.id) }}" class="btn btn-outline btn-sm">Düzenle</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state"><p>Filtreye uyan oğul kovanı yok.</p></div>
+        {% endif %}
+    {% endif %}
+
+    {% if selected_type in ['all', 'fixed'] %}
+        <h2 class="table-section-title">Sabit Kovanlar</h2>
+        {% if fixed_hives %}
+            <div class="admin-table-wrap">
+                <table class="admin-table hive-admin-table">
+                    <thead>
+                        <tr>
+                            <th>Kovan</th>
+                            <th>Arılık</th>
+                            <th>Durum</th>
+                            <th>Son Kontrol</th>
+                            <th>Aktif</th>
+                            <th>Hızlı Güncelle</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hive in fixed_hives %}
+                            <tr>
+                                <td><strong>{{ hive.kovan_no }}</strong></td>
+                                <td>{{ hive.arilik_adi }}</td>
+                                <td>{{ hive.durum }}</td>
+                                <td>{{ hive.son_kontrol_tarihi|format_date }}</td>
+                                <td>{% if hive.aktif %}<span class="badge badge-green">Aktif</span>{% else %}<span class="badge badge-gray">Pasif</span>{% endif %}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin_fixed_quick_update', id=hive.id) }}" class="quick-update-form">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                                        <select name="durum" class="form-control">
+                                            {% for status in fixed_statuses %}
+                                                <option value="{{ status }}" {% if hive.durum == status %}selected{% endif %}>{{ status }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="date" name="son_kontrol_tarihi" class="form-control" value="{{ hive.son_kontrol_tarihi or '' }}">
+                                        <label class="mini-check"><input type="checkbox" name="aktif" {% if hive.aktif %}checked{% endif %}> Aktif</label>
+                                        <button type="submit" class="btn btn-primary btn-sm">Kaydet</button>
+                                    </form>
+                                </td>
+                                <td class="table-actions">
+                                    <a href="{{ url_for('fixed_hive_detail', id=hive.id) }}" class="btn btn-outline btn-sm">Detay</a>
+                                    <a href="{{ url_for('fixed_hive_edit', id=hive.id) }}" class="btn btn-outline btn-sm">Düzenle</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state"><p>Filtreye uyan sabit kovan yok.</p></div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

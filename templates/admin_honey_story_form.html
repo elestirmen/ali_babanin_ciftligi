@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{% if story and story.id %}Bal Hikâyesi Düzenle{% else %}Yeni Bal Hikâyesi{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-form-container">
+    <a href="{{ url_for('admin_honey_stories') }}" class="back-link">← Bal Hikâyeleri</a>
+    <div class="page-header">
+        <h1>{% if story and story.id %}Bal Hikâyesi Düzenle{% else %}Yeni Bal Hikâyesi{% endif %}</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="baslik">Başlık *</label>
+                    <input type="text" id="baslik" name="baslik" class="form-control" maxlength="160" value="{{ story.baslik if story else '' }}" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hasat_donemi">Hasat Dönemi</label>
+                        <input type="text" id="hasat_donemi" name="hasat_donemi" class="form-control" value="{{ story.hasat_donemi if story else '' }}" placeholder="2026 İlkbahar">
+                    </div>
+                    <div class="form-group">
+                        <label for="yayin_tarihi">Yayın Tarihi</label>
+                        <input type="date" id="yayin_tarihi" name="yayin_tarihi" class="form-control" value="{{ story.yayin_tarihi if story else now.strftime('%Y-%m-%d') }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="bolge_notu">Bölge Notu</label>
+                    <textarea id="bolge_notu" name="bolge_notu" class="form-control">{{ story.bolge_notu if story else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="flora_notu">Flora Notu</label>
+                    <textarea id="flora_notu" name="flora_notu" class="form-control">{{ story.flora_notu if story else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="tadim_notu">Tadım Notu</label>
+                    <textarea id="tadim_notu" name="tadim_notu" class="form-control">{{ story.tadim_notu if story else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="saklama_notu">Saklama Notu</label>
+                    <textarea id="saklama_notu" name="saklama_notu" class="form-control">{{ story.saklama_notu if story else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="fotograf">Fotoğraf</label>
+                    <input type="file" id="fotograf" name="fotograf" accept=".jpg,.jpeg,.png,.webp">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="yayinla" name="yayinla" {% if not story or story.yayinla %}checked{% endif %}>
+                    <label for="yayinla">Public sayfada yayınla</label>
+                </div>
+                <hr class="divider">
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">Kaydet</button>
+                    <a href="{{ url_for('admin_honey_stories') }}" class="btn btn-outline btn-lg">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

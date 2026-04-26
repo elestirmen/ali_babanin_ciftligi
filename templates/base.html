@@ -15,7 +15,7 @@
           crossorigin="anonymous" />
 
     <!-- Ana Stil -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=asset_version) }}">
 
     {% block extra_head %}{% endblock %}
 </head>
@@ -29,9 +29,13 @@
         <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
         <ul class="navbar-nav" id="navMenu">
             <li><a href="{{ url_for('public_home') }}" class="{% if request.endpoint == 'public_home' %}active{% endif %}">Bilgi</a></li>
+            <li><a href="{{ url_for('public_journal') }}" class="{% if request.endpoint == 'public_journal' %}active{% endif %}">Günlük</a></li>
+            <li><a href="{{ url_for('public_honey_stories') }}" class="{% if request.endpoint in ['public_honey_stories', 'public_honey_story_detail'] %}active{% endif %}">Bal</a></li>
             <li><a href="{{ url_for('public_message') }}" class="{% if request.endpoint == 'public_message' %}active{% endif %}">Mesaj Bırak</a></li>
         {% if is_authenticated %}
                 <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
+                <li><a href="{{ url_for('admin_hives') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_') and 'hive' in request.endpoint %}active{% endif %}">Kovanlar</a></li>
+                <li><a href="{{ url_for('admin_content') }}" class="{% if request.endpoint in ['admin_content', 'admin_posts', 'admin_post_new', 'admin_post_edit', 'admin_honey_stories', 'admin_honey_story_new', 'admin_honey_story_edit'] %}active{% endif %}">İçerik</a></li>
                 <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">Mesajlar</a></li>
                 <li><a href="{{ url_for('swarm_list') }}" class="{% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
                 <li><a href="{{ url_for('apiary_list') }}" class="{% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
@@ -82,7 +86,7 @@
             });
         }
     </script>
-    <script src="{{ url_for('static', filename='js/pwa.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pwa.js', v=asset_version) }}"></script>
 
     {% block extra_scripts %}{% endblock %}
 </body>

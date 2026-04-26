@@ -59,6 +59,36 @@
         </div>
     </section>
 
+    <section class="public-band public-band-muted">
+        <div class="public-inner">
+            <div class="public-section-heading">
+                <h2>Bu Hafta Arılıkta</h2>
+                <p>Sezon günlüğü public tarafta konum vermeden genel gözlem paylaşır: flora, bakım, hasat ve ziyaret notları.</p>
+            </div>
+            {% if latest_posts %}
+                <div class="journal-preview-grid">
+                    {% for post in latest_posts %}
+                        <article class="journal-card">
+                            {% if post.fotograf_yolu %}
+                                <img src="{{ url_for('static', filename=post.fotograf_yolu) }}" alt="{{ post.baslik }}">
+                            {% endif %}
+                            <div class="journal-card-body">
+                                <span>{{ post.kategori }} • {{ post.yayin_tarihi|format_date }}</span>
+                                <h3>{{ post.baslik }}</h3>
+                                <p>{{ post.ozet or post.icerik[:180] }}</p>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+                <div class="mt-2">
+                    <a href="{{ url_for('public_journal') }}" class="btn btn-outline">Tüm Günlüğü Gör</a>
+                </div>
+            {% else %}
+                <div class="note-box">Henüz public günlük yazısı yok. Admin panelinden kısa sezon notları eklendiğinde burada görünür.</div>
+            {% endif %}
+        </div>
+    </section>
+
     <section id="aylik-rehber" class="public-band public-band-muted">
         <div class="public-inner">
             <div class="public-section-heading">
@@ -186,6 +216,29 @@
                     <p>Balın kristalleşmesi tek başına bozulma belirtisi değildir. Bitki kaynağı, glikoz/fruktoz dengesi ve saklama sıcaklığı kristalleşmeyi etkiler.</p>
                 </article>
             </div>
+            {% if latest_stories %}
+                <div class="public-section-heading mt-3">
+                    <h2>Bal Hikâyeleri</h2>
+                    <p>Hasat dönemleri, flora notları ve saklama önerileri bu bölümde ayrı hikâyeler halinde yayınlanır.</p>
+                </div>
+                <div class="story-preview-grid">
+                    {% for story in latest_stories %}
+                        <a href="{{ url_for('public_honey_story_detail', id=story.id) }}" class="story-card">
+                            {% if story.fotograf_yolu %}
+                                <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+                            {% endif %}
+                            <div>
+                                <span>{{ story.hasat_donemi or story.yayin_tarihi|format_date }}</span>
+                                <h3>{{ story.baslik }}</h3>
+                                <p>{{ story.flora_notu or story.tadim_notu or 'Balın dönemsel hikâyesi ve üretim notları.' }}</p>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+                <div class="mt-2">
+                    <a href="{{ url_for('public_honey_stories') }}" class="btn btn-outline">Tüm Bal Hikâyeleri</a>
+                </div>
+            {% endif %}
         </div>
     </section>
 
@@ -267,5 +320,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/public-guide.js') }}"></script>
+<script src="{{ url_for('static', filename='js/public-guide.js', v=asset_version) }}"></script>
 {% endblock %}

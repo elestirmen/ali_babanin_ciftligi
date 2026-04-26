@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{% if post %}Yazı Düzenle{% else %}Yeni Yazı{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-form-container">
+    <a href="{{ url_for('admin_posts') }}" class="back-link">← Sezon Günlüğü</a>
+    <div class="page-header">
+        <h1>{% if post %}Yazı Düzenle{% else %}Yeni Yazı{% endif %}</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="baslik">Başlık *</label>
+                    <input type="text" id="baslik" name="baslik" class="form-control" maxlength="160" value="{{ post.baslik if post else '' }}" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kategori">Kategori</label>
+                        <select id="kategori" name="kategori" class="form-control">
+                            {% for category in categories %}
+                                <option value="{{ category }}" {% if post and post.kategori == category %}selected{% endif %}>{{ category }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="yayin_tarihi">Yayın Tarihi</label>
+                        <input type="date" id="yayin_tarihi" name="yayin_tarihi" class="form-control" value="{{ post.yayin_tarihi if post else now.strftime('%Y-%m-%d') }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="ozet">Özet</label>
+                    <textarea id="ozet" name="ozet" class="form-control" maxlength="320">{{ post.ozet if post else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="icerik">İçerik *</label>
+                    <textarea id="icerik" name="icerik" class="form-control" rows="9" required>{{ post.icerik if post else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="fotograf">Fotoğraf</label>
+                    <input type="file" id="fotograf" name="fotograf" accept=".jpg,.jpeg,.png,.webp">
+                    {% if post and post.fotograf_yolu %}
+                        <div class="hint">Mevcut fotoğraf var. Yeni fotoğraf yüklerseniz değiştirilir.</div>
+                    {% endif %}
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="yayinla" name="yayinla" {% if not post or post.yayinla %}checked{% endif %}>
+                    <label for="yayinla">Public sayfada yayınla</label>
+                </div>
+                <hr class="divider">
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">Kaydet</button>
+                    <a href="{{ url_for('admin_posts') }}" class="btn btn-outline btn-lg">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

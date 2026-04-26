@@ -19,6 +19,13 @@ def get_db():
     return conn
 
 
+def ensure_column(cursor, table, column, definition):
+    """Mevcut SQLite tablosunda eksik kolon varsa ekler."""
+    columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
+    if column not in columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def create_tables():
     conn = get_db()
     cursor = conn.cursor()
@@ -107,13 +114,59 @@ def create_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ad TEXT NOT NULL,
             iletisim TEXT,
+            kategori TEXT DEFAULT 'Diğer',
             konu TEXT,
             mesaj TEXT NOT NULL,
             ip_adresi TEXT,
             user_agent TEXT,
+            durum TEXT DEFAULT 'Yeni',
+            yanit_notu TEXT,
             okundu INTEGER DEFAULT 0 CHECK (okundu IN (0, 1)),
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
             okundu_tarihi TEXT
+        )
+    ''')
+    ensure_column(cursor, 'public_messages', 'iletisim', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'kategori', "TEXT DEFAULT 'Diğer'")
+    ensure_column(cursor, 'public_messages', 'konu', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'ip_adresi', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'user_agent', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'durum', "TEXT DEFAULT 'Yeni'")
+    ensure_column(cursor, 'public_messages', 'yanit_notu', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'okundu', 'INTEGER DEFAULT 0')
+    ensure_column(cursor, 'public_messages', 'okundu_tarihi', 'TEXT')
+
+    # Public sezon gunlugu / duyuru icerikleri
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS public_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            baslik TEXT NOT NULL,
+            kategori TEXT DEFAULT 'Duyuru',
+            ozet TEXT,
+            icerik TEXT NOT NULL,
+            fotograf_yolu TEXT,
+            yayinla INTEGER DEFAULT 1 CHECK (yayinla IN (0, 1)),
+            yayin_tarihi TEXT DEFAULT (date('now', 'localtime')),
+            olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    ''')
+
+    # Public bal hikayeleri / hasat notlari
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS honey_stories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            baslik TEXT NOT NULL,
+            hasat_donemi TEXT,
+            bolge_notu TEXT,
+            flora_notu TEXT,
+            tadim_notu TEXT,
+            saklama_notu TEXT,
+            fotograf_yolu TEXT,
+            yayinla INTEGER DEFAULT 1 CHECK (yayinla IN (0, 1)),
+            yayin_tarihi TEXT DEFAULT (date('now', 'localtime')),
+            olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
         )
     ''')
 

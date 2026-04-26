@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Bal Hikâyeleri - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Bal Hikâyeleri</h1>
+            <div class="subtitle">Hasat dönemleri, flora notları, tadım ve saklama önerileri.</div>
+        </div>
+    </div>
+
+    {% if stories %}
+        <div class="story-list">
+            {% for story in stories %}
+                <a href="{{ url_for('public_honey_story_detail', id=story.id) }}" class="story-card story-card-wide">
+                    {% if story.fotograf_yolu %}
+                        <img src="{{ url_for('static', filename=story.fotograf_yolu) }}" alt="{{ story.baslik }}">
+                    {% endif %}
+                    <div>
+                        <span>{{ story.hasat_donemi or story.yayin_tarihi|format_date }}</span>
+                        <h2>{{ story.baslik }}</h2>
+                        <p>{{ story.flora_notu or story.tadim_notu or 'Bu hasada ait bal hikâyesi ve üretim notları.' }}</p>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">🍯</div>
+            <h3>Henüz bal hikâyesi yok</h3>
+            <p>Hasat notları yayınlandığında burada görünecek.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

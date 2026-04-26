@@ -11,6 +11,24 @@
         </div>
     </div>
 
+    <form method="GET" class="table-filter-bar">
+        <input type="search" name="q" class="form-control" value="{{ search }}" placeholder="Ad, konu, mesaj veya yanıt notu ara">
+        <select name="durum" class="form-control">
+            <option value="" {% if not selected_status %}selected{% endif %}>Tüm durumlar</option>
+            {% for status in statuses %}
+                <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+        </select>
+        <select name="kategori" class="form-control">
+            <option value="" {% if not selected_category %}selected{% endif %}>Tüm konu türleri</option>
+            {% for category in categories %}
+                <option value="{{ category }}" {% if selected_category == category %}selected{% endif %}>{{ category }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">Filtrele</button>
+        <a href="{{ url_for('admin_messages') }}" class="btn btn-outline">Temizle</a>
+    </form>
+
     {% if messages %}
         <div class="message-list">
             {% for message in messages %}
@@ -18,24 +36,46 @@
                     <div class="message-top">
                         <div>
                             <h2>{{ message.konu or 'Konu belirtilmedi' }}</h2>
-                            <div class="message-meta">{{ message.ad }} • {{ message.olusturma_tarihi }}</div>
+                            <div class="message-meta">{{ message.ad }} • {{ message.kategori }} • {{ message.olusturma_tarihi }}</div>
                         </div>
-                        {% if message.okundu %}
-                            <span class="badge badge-gray">Okundu</span>
-                        {% else %}
+                        {% if message.durum == 'Yeni' %}
                             <span class="badge badge-blue">Yeni</span>
+                        {% elif message.durum == 'Ziyaret planlandı' %}
+                            <span class="badge badge-green">Ziyaret planlandı</span>
+                        {% elif message.durum == 'Yanıtlandı' %}
+                            <span class="badge badge-yellow">Yanıtlandı</span>
+                        {% else %}
+                            <span class="badge badge-gray">{{ message.durum or 'Okundu' }}</span>
                         {% endif %}
                     </div>
                     {% if message.iletisim %}
                         <div class="message-contact">{{ message.iletisim }}</div>
                     {% endif %}
                     <p>{{ message.mesaj }}</p>
-                    {% if not message.okundu %}
-                        <form method="POST" action="{{ url_for('admin_message_mark_read', id=message.id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-outline btn-sm">Okundu İşaretle</button>
-                        </form>
-                    {% endif %}
+                    <form method="POST" action="{{ url_for('admin_message_update_status', id=message.id) }}" class="message-admin-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="durum-{{ message.id }}">Durum</label>
+                                <select id="durum-{{ message.id }}" name="durum" class="form-control">
+                                    {% for status in statuses %}
+                                        <option value="{{ status }}" {% if message.durum == status %}selected{% endif %}>{{ status }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="yanit-{{ message.id }}">Yanıt Notu</label>
+                                <textarea id="yanit-{{ message.id }}" name="yanit_notu" class="form-control" rows="2">{{ message.yanit_notu or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div class="message-admin-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">Durumu Kaydet</button>
+                            {% if not message.okundu %}
+                                <button type="submit" formaction="{{ url_for('admin_message_mark_read', id=message.id) }}" class="btn btn-outline btn-sm">Okundu İşaretle</button>
+                            {% endif %}
+                        </div>
+                    </form>
                 </article>
             {% endfor %}
         </div>

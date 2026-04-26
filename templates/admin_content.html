@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}İçerik Yönetimi - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1>İçerik Yönetimi</h1>
+            <div class="subtitle">Public sayfada görünen sezon günlüğü ve bal hikâyeleri.</div>
+        </div>
+    </div>
+
+    <div class="admin-action-grid">
+        <a href="{{ url_for('admin_posts') }}" class="admin-action-card">
+            <strong>Sezon Günlüğü</strong>
+            <span>{{ post_count }} yazı</span>
+        </a>
+        <a href="{{ url_for('admin_honey_stories') }}" class="admin-action-card">
+            <strong>Bal Hikâyeleri</strong>
+            <span>{{ story_count }} hikâye</span>
+        </a>
+    </div>
+</div>
+{% endblock %}

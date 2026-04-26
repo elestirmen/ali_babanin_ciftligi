@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Sezon Günlüğü - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-wide-container">
+    <div class="page-header">
+        <div>
+            <h1>Sezon Günlüğü</h1>
+            <div class="subtitle">Arılıkta olup biten genel gözlemler, konum bilgisi paylaşılmadan yayınlanır.</div>
+        </div>
+        <a href="{{ url_for('public_message') }}" class="btn btn-outline">Mesaj Bırak</a>
+    </div>
+
+    <div class="filter-tabs mb-2">
+        <a href="{{ url_for('public_journal') }}" class="{% if not selected_category %}active{% endif %}">Tümü</a>
+        {% for category in categories %}
+            <a href="{{ url_for('public_journal', kategori=category) }}" class="{% if selected_category == category %}active{% endif %}">{{ category }}</a>
+        {% endfor %}
+    </div>
+
+    {% if posts %}
+        <div class="journal-list">
+            {% for post in posts %}
+                <article class="journal-card journal-card-wide">
+                    {% if post.fotograf_yolu %}
+                        <img src="{{ url_for('static', filename=post.fotograf_yolu) }}" alt="{{ post.baslik }}">
+                    {% endif %}
+                    <div class="journal-card-body">
+                        <span>{{ post.kategori }} • {{ post.yayin_tarihi|format_date }}</span>
+                        <h2>{{ post.baslik }}</h2>
+                        {% if post.ozet %}
+                            <p class="journal-summary">{{ post.ozet }}</p>
+                        {% endif %}
+                        <p>{{ post.icerik }}</p>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <h3>Henüz günlük yazısı yok</h3>
+            <p>Yeni sezon notları yayınlandığında burada görünecek.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

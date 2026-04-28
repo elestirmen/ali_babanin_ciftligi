@@ -32,14 +32,10 @@ networks:
 
 volumes:
   ali_baba_data:
-    external: true
     name: ali_baba_data
   ali_baba_uploads:
-    external: true
     name: ali_baba_uploads
   ali_baba_qrcodes:
-    external: true
     name: ali_baba_qrcodes
   ali_baba_public_uploads:
-    external: true
     name: ali_baba_public_uploads

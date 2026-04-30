@@ -177,6 +177,8 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertNotIn(b'34.82', response.data)
         self.assertNotIn('Bakım notları'.encode('utf-8'), response.data)
         self.assertIn('Sorun Bildir'.encode('utf-8'), response.data)
+        self.assertIn('Ana Sayfa'.encode('utf-8'), response.data)
+        self.assertIn(b'public-hive-home-link', response.data)
         self.assertNotIn('Yeni Kontrol Kaydı'.encode('utf-8'), response.data)
 
         response = self.client.get(f'/q/fixed/{fixed_id}')

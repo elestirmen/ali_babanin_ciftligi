@@ -49,7 +49,7 @@ Public bilgi sayfaları, ziyaretçi mesajları ve yönetim paneli **tek kod taba
 ### Web (herkese açık)
 
 - Ana sayfa, **günlük** (`/gunluk`), ziyaretçi mesajı, **bal hikayeleri**
-- Kovan üstü QR için public karşılama, tek pinli harita ve kovan kaynaklı mesaj bırakma akışı
+- Kovan üstü QR için public karşılama ve kovan kaynaklı mesaj bırakma akışı
 - Oğul/sabit kovan **konumları** public tarafta gösterilmez
 - **PWA:** manifest + service worker, `/offline` yedek sayfa
 - Public görseller: `/public-media/...`
@@ -157,6 +157,12 @@ python app.py
 | `ALI_BABA_PUBLIC_URL` | Dış domain (opsiyonel) | Son `/` olmadan |
 | `ALI_BABA_PROXY_FIX` | `ProxyFix` (X-Forwarded-*) | Docker’da `1` |
 | `ALI_BABA_REQUIRE_SECURE_PASSWORD` | Zayıf prod parolalarını reddeder | Docker’da `1` |
+| `ALI_BABA_SESSION_COOKIE_SECURE` | Oturum çerezini yalnız HTTPS’te gönderir | `PUBLIC_URL` `https://` ise varsayılan `1`; lokal HTTP için `0` |
+| `ALI_BABA_LOGIN_FAILED_RATE_LIMIT` | IP başına hatalı giriş denemesi sınırı | `8` |
+| `ALI_BABA_LOGIN_FAILED_RATE_WINDOW` | Hatalı giriş limiti zaman penceresi (saniye) | `900` |
+| `ALI_BABA_PUBLIC_MESSAGE_RATE_LIMIT` | IP başına public mesaj gönderim sınırı | `5` |
+| `ALI_BABA_PUBLIC_MESSAGE_RATE_WINDOW` | Public mesaj limiti zaman penceresi (saniye) | `600` |
+| `ALI_BABA_MAX_IMAGE_PIXELS` | Yüklenen görseller için en yüksek piksel sayısı | `25000000` |
 | `GUNICORN_WORKERS` | Gunicorn işçi sayısı | `2` |
 | `ALI_BABA_ASSET_VERSION` | Önbellek kırma (opsiyonel) | Boşsa mtime’dan türetilir |
 

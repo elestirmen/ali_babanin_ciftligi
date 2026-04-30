@@ -10,7 +10,10 @@ import re
 import secrets
 import sqlite3
 import tempfile
+import threading
+import time
 import uuid
+import warnings
 import zipfile
 from datetime import datetime
 
@@ -52,6 +55,23 @@ if os.environ.get('ALI_BABA_REQUIRE_SECURE_PASSWORD', '0') == '1':
         raise RuntimeError('ALI_BABA_PASSWORD guclu bir parola olarak ayarlanmalidir.')
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
+
+def env_bool(name, default=False):
+    """Ortam degiskeninden guvenli boolean okur."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_int(name, default):
+    """Ortam degiskeninden pozitif integer okur."""
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
 ASSET_VERSION = os.environ.get('ALI_BABA_ASSET_VERSION')
 if not ASSET_VERSION:
     asset_version_paths = [
@@ -75,6 +95,17 @@ app.config['QR_FOLDER'] = QR_FOLDER
 app.config['PUBLIC_UPLOAD_FOLDER'] = PUBLIC_UPLOAD_FOLDER
 app.config['BACKUP_FOLDER'] = BACKUP_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+app.config['MAX_IMAGE_PIXELS'] = env_int('ALI_BABA_MAX_IMAGE_PIXELS', 25_000_000)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = env_bool(
+    'ALI_BABA_SESSION_COOKIE_SECURE',
+    default=PUBLIC_URL.startswith('https://')
+)
+app.config['LOGIN_FAILED_RATE_LIMIT'] = env_int('ALI_BABA_LOGIN_FAILED_RATE_LIMIT', 8)
+app.config['LOGIN_FAILED_RATE_WINDOW'] = env_int('ALI_BABA_LOGIN_FAILED_RATE_WINDOW', 15 * 60)
+app.config['PUBLIC_MESSAGE_RATE_LIMIT'] = env_int('ALI_BABA_PUBLIC_MESSAGE_RATE_LIMIT', 5)
+app.config['PUBLIC_MESSAGE_RATE_WINDOW'] = env_int('ALI_BABA_PUBLIC_MESSAGE_RATE_WINDOW', 10 * 60)
 
 # Klasorleri olustur
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -136,6 +167,9 @@ PUBLIC_POST_CATEGORIES = ['Flora', 'Kovan Bakımı', 'Hasat', 'Ziyaret', 'Duyuru
 # Basit oturum ve CSRF korumasi
 # ---------------------------------------------------------------------------
 
+RATE_LIMIT_BUCKETS = {}
+RATE_LIMIT_LOCK = threading.Lock()
+
 PUBLIC_ENDPOINTS = {
     'login',
     'static',
@@ -167,6 +201,45 @@ def csrf_token():
         token = secrets.token_urlsafe(32)
         session['_csrf_token'] = token
     return token
+
+
+def client_identifier():
+    """Rate limit icin istemci IP bilgisini dondurur."""
+    return request.remote_addr or 'unknown'
+
+
+def _rate_bucket(scope, identifier, window_seconds):
+    now = time.monotonic()
+    cutoff = now - window_seconds
+    key = (scope, identifier)
+    with RATE_LIMIT_LOCK:
+        attempts = RATE_LIMIT_BUCKETS.get(key, [])
+        attempts = [timestamp for timestamp in attempts if timestamp >= cutoff]
+        RATE_LIMIT_BUCKETS[key] = attempts
+        return attempts, now
+
+
+def rate_limit_exceeded(scope, max_attempts, window_seconds, identifier=None):
+    """Verilen pencere icinde limit asilmis mi kontrol eder."""
+    identifier = identifier or client_identifier()
+    attempts, _now = _rate_bucket(scope, identifier, window_seconds)
+    return len(attempts) >= max_attempts
+
+
+def record_rate_limit_attempt(scope, window_seconds, identifier=None):
+    """Rate limit kovasina yeni deneme ekler."""
+    identifier = identifier or client_identifier()
+    attempts, now = _rate_bucket(scope, identifier, window_seconds)
+    with RATE_LIMIT_LOCK:
+        attempts.append(now)
+        RATE_LIMIT_BUCKETS[(scope, identifier)] = attempts
+
+
+def clear_rate_limit(scope, identifier=None):
+    """Basarili aksiyonlardan sonra ilgili rate limit kovasini temizler."""
+    identifier = identifier or client_identifier()
+    with RATE_LIMIT_LOCK:
+        RATE_LIMIT_BUCKETS.pop((scope, identifier), None)
 
 
 def build_public_url(endpoint, **values):
@@ -237,6 +310,29 @@ def require_login_and_csrf():
             abort(400, description='CSRF token gecersiz veya eksik.')
 
     return None
+
+
+@app.after_request
+def add_security_headers(response):
+    """Temel tarayici guvenlik basliklarini ekler."""
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "img-src 'self' data: blob: https://unpkg.com "
+        "https://*.tile.openstreetmap.org https://server.arcgisonline.com "
+        "https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com; "
+        "connect-src 'self'; "
+        "font-src 'self' data:; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'self'"
+    )
+    return response
 
 # ---------------------------------------------------------------------------
 # Yardimci fonksiyonlar: Veritabani
@@ -934,14 +1030,22 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def configure_image_limits():
+    """Pillow piksel limitini uygulama ayarlarina gore ayarlar."""
+    Image.MAX_IMAGE_PIXELS = app.config.get('MAX_IMAGE_PIXELS', 25_000_000)
+
+
 def verify_image(filepath):
     """
     Dosyanin gercekten bir goruntu olup olmadigini Pillow ile dogrular.
     Gecerliyse True, degilse False dondurur.
     """
     try:
-        with Image.open(filepath) as img:
-            img.verify()
+        configure_image_limits()
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(filepath) as img:
+                img.verify()
         return True
     except Exception:
         return False
@@ -962,21 +1066,24 @@ def rewrite_image_without_metadata(filepath, ext):
         return False
 
     try:
-        with Image.open(filepath) as img:
-            img.load()
-            img = ImageOps.exif_transpose(img)
-            if image_format == 'JPEG' and img.mode not in ('RGB', 'L'):
-                img = img.convert('RGB')
-            elif image_format in {'PNG', 'WEBP'} and img.mode == 'P':
-                img = img.convert('RGBA')
+        configure_image_limits()
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(filepath) as img:
+                img.load()
+                img = ImageOps.exif_transpose(img)
+                if image_format == 'JPEG' and img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                elif image_format in {'PNG', 'WEBP'} and img.mode == 'P':
+                    img = img.convert('RGBA')
 
-            save_kwargs = {}
-            if image_format in {'JPEG', 'WEBP'}:
-                save_kwargs.update({'quality': 88, 'optimize': True})
-            elif image_format == 'PNG':
-                save_kwargs.update({'optimize': True})
+                save_kwargs = {}
+                if image_format in {'JPEG', 'WEBP'}:
+                    save_kwargs.update({'quality': 88, 'optimize': True})
+                elif image_format == 'PNG':
+                    save_kwargs.update({'optimize': True})
 
-            img.save(filepath, format=image_format, **save_kwargs)
+                img.save(filepath, format=image_format, **save_kwargs)
         return True
     except Exception:
         return False
@@ -1045,8 +1152,11 @@ def get_exif_gps(filepath):
     Basariliysa (latitude, longitude) dondurur, yoksa (None, None).
     """
     try:
-        with Image.open(filepath) as image:
-            exif_data = image._getexif()
+        configure_image_limits()
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(filepath) as image:
+                exif_data = image._getexif()
         if not exif_data:
             return None, None
 
@@ -1139,8 +1249,7 @@ def get_message_source_context(source_type, source_id):
 
     if normalized_type == 'fixed':
         hive = query_db('''
-            SELECT fh.id, fh.kovan_no, fh.aktif, a.arilik_adi,
-                   a.latitude, a.longitude
+            SELECT fh.id, fh.kovan_no, fh.aktif, a.arilik_adi
             FROM fixed_hives fh
             JOIN apiaries a ON fh.arilik_id = a.id
             WHERE fh.id = ?
@@ -1155,12 +1264,10 @@ def get_message_source_context(source_type, source_id):
             'admin_label': f"Sabit kovan {hive['kovan_no']} - {hive['arilik_adi']}",
             'public_label': f"Kovan etiketi: {hive['kovan_no']}",
             'detail_endpoint': 'fixed_hive_detail',
-            'location_latitude': hive['latitude'],
-            'location_longitude': hive['longitude'],
         }
 
     hive = query_db(
-        'SELECT id, ad, aktif, latitude, longitude FROM swarm_hives WHERE id = ?',
+        'SELECT id, ad, aktif FROM swarm_hives WHERE id = ?',
         (normalized_id,),
         one=True
     )
@@ -1174,21 +1281,15 @@ def get_message_source_context(source_type, source_id):
         'admin_label': f"Oğul kovanı {hive['ad']}",
         'public_label': f"Kovan etiketi: {hive['ad']}",
         'detail_endpoint': 'swarm_detail',
-        'location_latitude': hive['latitude'],
-        'location_longitude': hive['longitude'],
     }
 
 
 def public_hive_context(source_context):
     """Girişsiz QR ekraninda gösterilecek güvenli kovan baglamini hazirlar."""
     detail_url = url_for(source_context['detail_endpoint'], id=source_context['id'])
-    has_location = (
-        source_context.get('location_latitude') is not None
-        and source_context.get('location_longitude') is not None
-    )
     return {
         **source_context,
-        'has_location': has_location,
+        'has_location': False,
         'message_url': url_for(
             'public_message',
             kaynak_turu=source_context['type'],
@@ -1273,6 +1374,16 @@ def utility_processor():
 def login():
     """Basit sifre ile giris."""
     if request.method == 'POST':
+        identifier = client_identifier()
+        login_window = app.config['LOGIN_FAILED_RATE_WINDOW']
+        if rate_limit_exceeded(
+            'login_failed',
+            app.config['LOGIN_FAILED_RATE_LIMIT'],
+            login_window,
+            identifier
+        ):
+            abort(429, description='Cok fazla hatali giris denemesi. Lutfen daha sonra tekrar deneyin.')
+
         password = request.form.get('password', '')
         if secrets.compare_digest(password, APP_PASSWORD):
             next_url = request.form.get('next') or request.args.get('next') or url_for('index')
@@ -1282,9 +1393,11 @@ def login():
             session.clear()
             session['authenticated'] = True
             session['_csrf_token'] = secrets.token_urlsafe(32)
+            clear_rate_limit('login_failed', identifier)
             flash('Giris yapildi.', 'success')
             return redirect(next_url)
 
+        record_rate_limit_attempt('login_failed', login_window, identifier)
         flash('Sifre hatali.', 'error')
 
     next_url = request.args.get('next') or url_for('index')
@@ -1368,6 +1481,15 @@ def public_message():
     }
 
     if request.method == 'POST':
+        message_window = app.config['PUBLIC_MESSAGE_RATE_WINDOW']
+        if rate_limit_exceeded(
+            'public_message',
+            app.config['PUBLIC_MESSAGE_RATE_LIMIT'],
+            message_window
+        ):
+            abort(429, description='Cok fazla mesaj gonderildi. Lutfen daha sonra tekrar deneyin.')
+        record_rate_limit_attempt('public_message', message_window)
+
         # Basit bot filtresi; dolu gelirse sessizce basarili gibi davran.
         if request.form.get('website', '').strip():
             flash('Mesajiniz alindi.', 'success')

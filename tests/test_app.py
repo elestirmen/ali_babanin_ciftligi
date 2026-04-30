@@ -45,6 +45,8 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         init_db.DB_PATH = app_module.DB_PATH
         init_db.create_tables()
         app_module.app.config.update(TESTING=True)
+        with app_module.RATE_LIMIT_LOCK:
+            app_module.RATE_LIMIT_BUCKETS.clear()
         self.client = app_module.app.test_client()
 
     def login(self):
@@ -85,6 +87,36 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['Location'], '/admin')
 
+    def test_security_headers_and_session_cookie_flags(self):
+        response = self.client.get('/')
+        self.assertEqual(response.headers['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(response.headers['X-Frame-Options'], 'SAMEORIGIN')
+        self.assertEqual(response.headers['Referrer-Policy'], 'strict-origin-when-cross-origin')
+        self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+
+        response = self.client.post('/login', data={'password': 'alibaba'})
+        cookie = response.headers.get('Set-Cookie', '')
+        self.assertIn('HttpOnly', cookie)
+        self.assertIn('SameSite=Lax', cookie)
+
+    def test_failed_login_rate_limit(self):
+        old_limit = app_module.app.config['LOGIN_FAILED_RATE_LIMIT']
+        old_window = app_module.app.config['LOGIN_FAILED_RATE_WINDOW']
+        app_module.app.config['LOGIN_FAILED_RATE_LIMIT'] = 2
+        app_module.app.config['LOGIN_FAILED_RATE_WINDOW'] = 600
+        try:
+            for _ in range(2):
+                response = self.client.post('/login', data={'password': 'yanlis'})
+                self.assertEqual(response.status_code, 200)
+
+            response = self.client.post('/login', data={'password': 'yanlis'})
+            self.assertEqual(response.status_code, 429)
+        finally:
+            app_module.app.config['LOGIN_FAILED_RATE_LIMIT'] = old_limit
+            app_module.app.config['LOGIN_FAILED_RATE_WINDOW'] = old_window
+            with app_module.RATE_LIMIT_LOCK:
+                app_module.RATE_LIMIT_BUCKETS.clear()
+
     def test_public_message_can_be_left_without_login(self):
         response = self.client.post('/mesaj-birak', data={
             'ad': 'Ziyaretci',
@@ -97,6 +129,32 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertEqual(self.count_rows('public_messages'), 1)
         message = self.fetch_one('SELECT kategori FROM public_messages')
         self.assertEqual(message['kategori'], 'Diğer')
+
+    def test_public_message_rate_limit(self):
+        old_limit = app_module.app.config['PUBLIC_MESSAGE_RATE_LIMIT']
+        old_window = app_module.app.config['PUBLIC_MESSAGE_RATE_WINDOW']
+        app_module.app.config['PUBLIC_MESSAGE_RATE_LIMIT'] = 2
+        app_module.app.config['PUBLIC_MESSAGE_RATE_WINDOW'] = 600
+        ip = '203.0.113.25'
+        try:
+            for index in range(2):
+                response = self.client.post('/mesaj-birak', data={
+                    'ad': 'Ziyaretci',
+                    'mesaj': f'Mesaj {index}',
+                }, environ_overrides={'REMOTE_ADDR': ip})
+                self.assertEqual(response.status_code, 302)
+
+            response = self.client.post('/mesaj-birak', data={
+                'ad': 'Ziyaretci',
+                'mesaj': 'Ucuncu mesaj',
+            }, environ_overrides={'REMOTE_ADDR': ip})
+            self.assertEqual(response.status_code, 429)
+            self.assertEqual(self.count_rows('public_messages'), 2)
+        finally:
+            app_module.app.config['PUBLIC_MESSAGE_RATE_LIMIT'] = old_limit
+            app_module.app.config['PUBLIC_MESSAGE_RATE_WINDOW'] = old_window
+            with app_module.RATE_LIMIT_LOCK:
+                app_module.RATE_LIMIT_BUCKETS.clear()
 
     def test_public_hive_qr_landing_and_context_message(self):
         apiary_id = app_module.execute_db(
@@ -113,8 +171,11 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         response = self.client.get(f'/fixed-hives/{fixed_id}')
         self.assertEqual(response.status_code, 200)
         self.assertIn('Doğanın küçük çalışanlarından'.encode('utf-8'), response.data)
-        self.assertIn('Kovanın konumu'.encode('utf-8'), response.data)
-        self.assertIn(b'publicHiveMap', response.data)
+        self.assertNotIn('Kovanın konumu'.encode('utf-8'), response.data)
+        self.assertNotIn(b'publicHiveMap', response.data)
+        self.assertNotIn(b'38.63', response.data)
+        self.assertNotIn(b'34.82', response.data)
+        self.assertNotIn('Bakım notları'.encode('utf-8'), response.data)
         self.assertIn('Sorun Bildir'.encode('utf-8'), response.data)
         self.assertNotIn('Yeni Kontrol Kaydı'.encode('utf-8'), response.data)
 
@@ -291,6 +352,24 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         saved_path = app_module.media_abs_path(path)
         with Image.open(saved_path) as saved:
             self.assertEqual(dict(saved.getexif()), {})
+
+    def test_upload_rejects_images_over_pixel_limit(self):
+        old_limit = app_module.app.config['MAX_IMAGE_PIXELS']
+        old_pillow_limit = Image.MAX_IMAGE_PIXELS
+        app_module.app.config['MAX_IMAGE_PIXELS'] = 10
+        try:
+            image = Image.new('RGB', (4, 4), color='white')
+            buffer = BytesIO()
+            image.save(buffer, format='PNG')
+            buffer.seek(0)
+
+            with app_module.app.test_request_context('/'):
+                path = app_module.save_upload(FileStorage(stream=buffer, filename='too-large.png'))
+
+            self.assertIsNone(path)
+        finally:
+            app_module.app.config['MAX_IMAGE_PIXELS'] = old_limit
+            Image.MAX_IMAGE_PIXELS = old_pillow_limit
 
     def test_admin_hives_table_and_quick_updates(self):
         token = self.login()
@@ -679,6 +758,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         response = self.client.get(f'/admin/backups/{backup.name}/download')
         self.assertEqual(response.status_code, 200)
         self.assertIn('attachment', response.headers.get('Content-Disposition', ''))
+        response.close()
 
         response = self.client.post(f'/admin/backups/{backup.name}/delete', data={'csrf_token': token})
         self.assertEqual(response.status_code, 302)

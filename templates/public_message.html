@@ -6,23 +6,38 @@
 <div class="container public-form-container">
     <div class="page-header">
         <div>
-            <h1>Mesaj Bırak</h1>
-            <div class="subtitle">Arıcılık, bal, ziyaret veya genel sorular için kısa bir not bırakabilirsiniz.</div>
+            <h1>{% if source_context %}Kovan Mesajı{% else %}Mesaj Bırak{% endif %}</h1>
+            <div class="subtitle">
+                {% if source_context %}
+                    {{ source_context.public_label }} için sorun, gözlem veya bilgi notu bırakabilirsiniz.
+                {% else %}
+                    Arıcılık, bal, ziyaret veya genel sorular için kısa bir not bırakabilirsiniz.
+                {% endif %}
+            </div>
         </div>
     </div>
 
     <div class="card">
         <div class="card-body">
+            {% if source_context %}
+                <div class="message-source-panel">
+                    <strong>{{ source_context.subtitle }}</strong>
+                    <span>{{ source_context.public_label }}</span>
+                </div>
+            {% endif %}
+
             <form method="POST" class="public-message-form">
                 <div class="form-group hp-field">
                     <label for="website">Web sitesi</label>
                     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
                 </div>
+                <input type="hidden" name="kaynak_turu" value="{{ form.kaynak_turu }}">
+                <input type="hidden" name="kaynak_id" value="{{ form.kaynak_id }}">
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="ad">Ad</label>
-                        <input type="text" id="ad" name="ad" class="form-control" maxlength="80" value="{{ form.ad }}" required>
+                        <input type="text" id="ad" name="ad" class="form-control" maxlength="80" value="{{ form.ad }}" placeholder="İsteğe bağlı">
                     </div>
                     <div class="form-group">
                         <label for="iletisim">İletişim</label>
@@ -48,12 +63,22 @@
                 <div class="form-group">
                     <label for="mesaj">Mesaj</label>
                     <textarea id="mesaj" name="mesaj" class="form-control" maxlength="2000" rows="7" required>{{ form.mesaj }}</textarea>
-                    <div class="hint">Kovan konumu, güvenlik bilgisi veya hassas kişisel veri paylaşmayın.</div>
+                    <div class="hint">
+                        {% if source_context %}
+                            Kovana müdahale etmeyin; acil tehlike varsa mesajınızda ne gördüğünüzü kısaca yazın.
+                        {% else %}
+                            Kovan konumu, güvenlik bilgisi veya hassas kişisel veri paylaşmayın.
+                        {% endif %}
+                    </div>
                 </div>
 
                 <div class="btn-group">
                     <button type="submit" class="btn btn-primary">Gönder</button>
-                    <a href="{{ url_for('public_home') }}" class="btn btn-outline">Ana Sayfa</a>
+                    {% if source_context %}
+                        <a href="{{ url_for(source_context.detail_endpoint, id=source_context.id) }}" class="btn btn-outline">Kovan Bilgisi</a>
+                    {% else %}
+                        <a href="{{ url_for('public_home') }}" class="btn btn-outline">Ana Sayfa</a>
+                    {% endif %}
                 </div>
             </form>
         </div>

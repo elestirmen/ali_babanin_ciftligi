@@ -98,6 +98,57 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         message = self.fetch_one('SELECT kategori FROM public_messages')
         self.assertEqual(message['kategori'], 'Diğer')
 
+    def test_public_hive_qr_landing_and_context_message(self):
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Gizli Arilik', 38.63, 34.82)
+        )
+        fixed_id = app_module.execute_db(
+            '''INSERT INTO fixed_hives
+               (arilik_id, kovan_no, sira_no, konum_no, durum)
+               VALUES (?, ?, ?, ?, ?)''',
+            (apiary_id, 'K7', 1, 1, 'Orta')
+        )
+
+        response = self.client.get(f'/fixed-hives/{fixed_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Doğanın küçük çalışanlarından'.encode('utf-8'), response.data)
+        self.assertIn('Kovanın konumu'.encode('utf-8'), response.data)
+        self.assertIn(b'publicHiveMap', response.data)
+        self.assertIn('Sorun Bildir'.encode('utf-8'), response.data)
+        self.assertNotIn('Yeni Kontrol Kaydı'.encode('utf-8'), response.data)
+
+        response = self.client.get(f'/q/fixed/{fixed_id}')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], f'/fixed-hives/{fixed_id}')
+
+        response = self.client.post('/mesaj-birak', data={
+            'kaynak_turu': 'fixed',
+            'kaynak_id': str(fixed_id),
+            'kategori': 'Kovan devrilmiş / zarar görmüş',
+            'konu': 'Kovan etiketi',
+            'mesaj': 'Kovan yan yatmış görünüyor.',
+        })
+        self.assertEqual(response.status_code, 302)
+        message = self.fetch_one('''
+            SELECT ad, kategori, kaynak_turu, kaynak_id
+            FROM public_messages
+        ''')
+        self.assertEqual(message['ad'], 'İsimsiz ziyaretçi')
+        self.assertEqual(message['kategori'], 'Kovan devrilmiş / zarar görmüş')
+        self.assertEqual(message['kaynak_turu'], 'fixed')
+        self.assertEqual(message['kaynak_id'], fixed_id)
+
+        self.login()
+        response = self.client.get('/admin/messages?q=K7')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Sabit kovan K7'.encode('utf-8'), response.data)
+        self.assertIn('Kovan yan yatmış'.encode('utf-8'), response.data)
+
+        response = self.client.get(f'/fixed-hives/{fixed_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Yeni Kontrol Kaydı'.encode('utf-8'), response.data)
+
     def test_admin_message_filters_and_status_update(self):
         token = self.login()
         app_module.execute_db('''

@@ -15,8 +15,11 @@
                 <img src="{{ media_url(qr_path) }}" alt="QR Kod - {{ qr_label }}">
 
                 <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px;">
-                    Bu QR kodu tarayarak kovan detay sayfasına hızlıca erişebilirsiniz.
-                    QR kodu yazdırıp kovanın üzerine yapıştırabilirsiniz.
+                    Bu tek QR kodu girişsiz kullanıcıya kovan bilgilendirme ve mesaj ekranını,
+                    giriş yapmış yöneticiye kovan detayını açar.
+                </p>
+                <p class="text-muted" style="font-size:0.78rem; margin-bottom:16px; word-break:break-word;">
+                    {{ public_qr_url }}
                 </p>
 
                 <div class="btn-group" style="justify-content:center;">

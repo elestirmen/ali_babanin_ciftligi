@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ali-baba-public-v6';
+const CACHE_NAME = 'ali-baba-public-v7';
 const PUBLIC_ASSETS = [
   '/',
   '/offline',

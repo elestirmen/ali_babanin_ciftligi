@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Kovan Bilgisi - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container public-hive-container">
+    <section class="public-hive-panel">
+        <div class="public-hive-kicker">{{ hive_context.subtitle }}</div>
+        <h1>Doğanın küçük çalışanlarından birinin yanındasınız.</h1>
+        <p>
+            Bu kovan Ali Baba’nın Çiftliği tarafından takip ediliyor. Arıların huzuru ve
+            sizin güvenliğiniz için kovana uzaktan bakmanız yeterli. Bir sorun fark
+            ettiyseniz bize haber verebilirsiniz.
+        </p>
+
+        <div class="public-hive-notice">
+            <strong>{{ hive_context.public_label }}</strong>
+            <span>Bakım notları ve kovan detayları yalnızca yönetici girişinden görüntülenir.</span>
+        </div>
+
+        {% if hive_context.has_location %}
+            <div class="public-hive-map-section">
+                <h2>Kovanın konumu</h2>
+                <p>Bu işaret, QR kodunu okuttuğunuz kovanı gösterir. Arıların huzuru için uzaktan gözlemlemek yeterlidir.</p>
+                <div id="publicHiveMap" class="public-hive-map" aria-label="Kovan konumu haritası"></div>
+            </div>
+        {% endif %}
+
+        <div class="public-hive-actions">
+            <a href="{{ hive_context.message_url }}" class="btn btn-primary">Sorun Bildir</a>
+            <a href="{{ hive_context.message_url }}" class="btn btn-accent">Mesaj Gönder</a>
+            <a href="{{ hive_context.login_url }}" class="btn btn-outline">Yönetici Girişi</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if hive_context.has_location %}
+<script>
+    (function () {
+        var mapEl = document.getElementById('publicHiveMap');
+        if (!mapEl || typeof L === 'undefined') {
+            return;
+        }
+
+        var lat = {{ hive_context.location_latitude|tojson }};
+        var lng = {{ hive_context.location_longitude|tojson }};
+        if (typeof lat !== 'number' || typeof lng !== 'number') {
+            return;
+        }
+
+        var map = L.map(mapEl, {
+            scrollWheelZoom: false,
+            zoomControl: true
+        }).setView([lat, lng], 16);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        L.marker([lat, lng]).addTo(map).bindPopup('Bu kovan');
+
+        window.setTimeout(function () {
+            map.invalidateSize();
+        }, 80);
+    })();
+</script>
+{% endif %}
+{% endblock %}

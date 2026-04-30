@@ -51,6 +51,18 @@
                     {% if message.iletisim %}
                         <div class="message-contact">{{ message.iletisim }}</div>
                     {% endif %}
+                    {% if message.kaynak_label %}
+                        <div class="message-source">
+                            Kaynak:
+                            {% if message.kaynak_turu == 'fixed' %}
+                                <a href="{{ url_for('fixed_hive_detail', id=message.kaynak_id) }}">{{ message.kaynak_label }}</a>
+                            {% elif message.kaynak_turu == 'swarm' %}
+                                <a href="{{ url_for('swarm_detail', id=message.kaynak_id) }}">{{ message.kaynak_label }}</a>
+                            {% else %}
+                                {{ message.kaynak_label }}
+                            {% endif %}
+                        </div>
+                    {% endif %}
                     <p>{{ message.mesaj }}</p>
                     <form method="POST" action="{{ url_for('admin_message_update_status', id=message.id) }}" class="message-admin-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

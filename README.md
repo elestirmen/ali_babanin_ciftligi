@@ -49,6 +49,7 @@ Public bilgi sayfaları, ziyaretçi mesajları ve yönetim paneli **tek kod taba
 ### Web (herkese açık)
 
 - Ana sayfa, **günlük** (`/gunluk`), ziyaretçi mesajı, **bal hikayeleri**
+- Kovan üstü QR için public karşılama, tek pinli harita ve kovan kaynaklı mesaj bırakma akışı
 - Oğul/sabit kovan **konumları** public tarafta gösterilmez
 - **PWA:** manifest + service worker, `/offline` yedek sayfa
 - Public görseller: `/public-media/...`
@@ -221,7 +222,7 @@ Yedek ve dışa aktarma dosyaları konum, kovan ve özel notlar gibi hassas veri
 
 | Alan | Örnek yollar |
 |------|----------------|
-| **Public** | `/`, `/mesaj-birak`, `/gunluk`, `/bal-hikayeleri`, `/bal-hikayeleri/<id>`, `/public-media/<dosya>`, `/offline`, `/manifest.webmanifest`, `/sw.js` |
+| **Public** | `/`, `/mesaj-birak`, `/q/fixed/<id>`, `/q/swarm/<id>`, `/fixed-hives/<id>` ve `/swarm-hives/<id>` için girişsiz QR ekranı, `/gunluk`, `/bal-hikayeleri`, `/bal-hikayeleri/<id>`, `/public-media/<dosya>`, `/offline`, `/manifest.webmanifest`, `/sw.js` |
 | **Giriş** | `/login`, `/logout` |
 | **Panel** | `/admin`, `/admin/messages`, `/admin/content`, `/admin/posts`, `/admin/honey-stories`, `/admin/backups`, `/admin/export` … |
 | **Harita / veri (oturum)** | `/admin/hives` ve ilgili rotalar, `/media/uploads/<dosya>`, `/media/qrcodes/<dosya>`, `GET /api/map-data` |

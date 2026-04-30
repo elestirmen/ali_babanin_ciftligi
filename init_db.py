@@ -136,6 +136,8 @@ def create_tables():
             mesaj TEXT NOT NULL,
             ip_adresi TEXT,
             user_agent TEXT,
+            kaynak_turu TEXT,
+            kaynak_id INTEGER,
             durum TEXT DEFAULT 'Yeni',
             yanit_notu TEXT,
             okundu INTEGER DEFAULT 0 CHECK (okundu IN (0, 1)),
@@ -148,10 +150,16 @@ def create_tables():
     ensure_column(cursor, 'public_messages', 'konu', 'TEXT')
     ensure_column(cursor, 'public_messages', 'ip_adresi', 'TEXT')
     ensure_column(cursor, 'public_messages', 'user_agent', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'kaynak_turu', 'TEXT')
+    ensure_column(cursor, 'public_messages', 'kaynak_id', 'INTEGER')
     ensure_column(cursor, 'public_messages', 'durum', "TEXT DEFAULT 'Yeni'")
     ensure_column(cursor, 'public_messages', 'yanit_notu', 'TEXT')
     ensure_column(cursor, 'public_messages', 'okundu', 'INTEGER DEFAULT 0')
     ensure_column(cursor, 'public_messages', 'okundu_tarihi', 'TEXT')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_public_messages_source
+        ON public_messages (kaynak_turu, kaynak_id)
+    ''')
 
     # Public sezon gunlugu / duyuru icerikleri
     cursor.execute('''

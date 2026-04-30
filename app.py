@@ -112,9 +112,21 @@ INSPECTION_CHOICES = {
     'ilaclama_yapildi': ['Evet', 'Hayır'],
 }
 
-PUBLIC_MESSAGE_CATEGORIES = [
+GENERAL_MESSAGE_CATEGORIES = [
     'Bal hakkında soru', 'Ziyaret talebi', 'Arıcılık sorusu', 'İş birliği', 'Diğer'
 ]
+
+HIVE_MESSAGE_CATEGORIES = [
+    'Kovan devrilmiş / zarar görmüş',
+    'Arılarla ilgili tehlike fark ettim',
+    'Kovan yeriyle ilgili bilgi vermek istiyorum',
+    'Bal / ürün hakkında bilgi almak istiyorum',
+    'Diğer',
+]
+
+PUBLIC_MESSAGE_CATEGORIES = list(dict.fromkeys(
+    HIVE_MESSAGE_CATEGORIES + GENERAL_MESSAGE_CATEGORIES
+))
 
 PUBLIC_MESSAGE_STATUSES = ['Yeni', 'Okundu', 'Yanıtlandı', 'Ziyaret planlandı']
 
@@ -129,6 +141,10 @@ PUBLIC_ENDPOINTS = {
     'static',
     'public_home',
     'public_message',
+    'public_qr_fixed',
+    'public_qr_swarm',
+    'fixed_hive_detail',
+    'swarm_detail',
     'public_journal',
     'public_honey_stories',
     'public_honey_story_detail',
@@ -253,6 +269,39 @@ def execute_db(query, args=()):
     lastrowid = cursor.lastrowid
     conn.close()
     return lastrowid
+
+
+def ensure_runtime_schema():
+    """Mevcut kurulumlarda yeni public mesaj kolonlarini ekler."""
+    if not os.path.exists(DB_PATH):
+        return
+
+    conn = get_db()
+    try:
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='public_messages'"
+        ).fetchone()
+        if not table_exists:
+            return
+
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(public_messages)").fetchall()
+        }
+        if 'kaynak_turu' not in columns:
+            conn.execute('ALTER TABLE public_messages ADD COLUMN kaynak_turu TEXT')
+        if 'kaynak_id' not in columns:
+            conn.execute('ALTER TABLE public_messages ADD COLUMN kaynak_id INTEGER')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_public_messages_source
+            ON public_messages (kaynak_turu, kaynak_id)
+        ''')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+ensure_runtime_schema()
 
 
 # ---------------------------------------------------------------------------
@@ -1039,10 +1088,10 @@ def generate_qr_code(hive_id, hive_type='fixed'):
     """Kovan icin QR kod uretir ve dosya yolunu dondurur."""
     if hive_type == 'swarm':
         qr_filename = f"qr_swarm_{hive_id}.png"
-        endpoint = 'swarm_detail'
+        endpoint = 'public_qr_swarm'
     else:
         qr_filename = f"qr_hive_{hive_id}.png"
-        endpoint = 'fixed_hive_detail'
+        endpoint = 'public_qr_fixed'
     qr_filepath = os.path.join(QR_FOLDER, qr_filename)
 
     # QR kodun yonlendirecegi URL
@@ -1055,6 +1104,98 @@ def generate_qr_code(hive_id, hive_type='fixed'):
     img.save(qr_filepath)
 
     return f"qrcodes/{qr_filename}"
+
+
+def normalize_source_type(value):
+    """Mesaj kaynagi tipini desteklenen kısa bicime indirger."""
+    normalized = (value or '').strip().lower()
+    aliases = {
+        'fixed': 'fixed',
+        'fixed_hive': 'fixed',
+        'sabit': 'fixed',
+        'swarm': 'swarm',
+        'swarm_hive': 'swarm',
+        'ogul': 'swarm',
+        'oğul': 'swarm',
+    }
+    return aliases.get(normalized)
+
+
+def parse_source_id(value):
+    """Mesaj kaynagi id alanini pozitif tamsayi olarak okur."""
+    try:
+        source_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return source_id if source_id > 0 else None
+
+
+def get_message_source_context(source_type, source_id):
+    """Public mesaj formu ve admin listesi icin kovan kaynagi dondurur."""
+    normalized_type = normalize_source_type(source_type)
+    normalized_id = parse_source_id(source_id)
+    if not normalized_type or not normalized_id:
+        return None
+
+    if normalized_type == 'fixed':
+        hive = query_db('''
+            SELECT fh.id, fh.kovan_no, fh.aktif, a.arilik_adi,
+                   a.latitude, a.longitude
+            FROM fixed_hives fh
+            JOIN apiaries a ON fh.arilik_id = a.id
+            WHERE fh.id = ?
+        ''', (normalized_id,), one=True)
+        if not hive:
+            return None
+        return {
+            'type': 'fixed',
+            'id': hive['id'],
+            'title': f"Kovan {hive['kovan_no']}",
+            'subtitle': 'Sabit kovan',
+            'admin_label': f"Sabit kovan {hive['kovan_no']} - {hive['arilik_adi']}",
+            'public_label': f"Kovan etiketi: {hive['kovan_no']}",
+            'detail_endpoint': 'fixed_hive_detail',
+            'location_latitude': hive['latitude'],
+            'location_longitude': hive['longitude'],
+        }
+
+    hive = query_db(
+        'SELECT id, ad, aktif, latitude, longitude FROM swarm_hives WHERE id = ?',
+        (normalized_id,),
+        one=True
+    )
+    if not hive:
+        return None
+    return {
+        'type': 'swarm',
+        'id': hive['id'],
+        'title': hive['ad'],
+        'subtitle': 'Oğul kovanı',
+        'admin_label': f"Oğul kovanı {hive['ad']}",
+        'public_label': f"Kovan etiketi: {hive['ad']}",
+        'detail_endpoint': 'swarm_detail',
+        'location_latitude': hive['latitude'],
+        'location_longitude': hive['longitude'],
+    }
+
+
+def public_hive_context(source_context):
+    """Girişsiz QR ekraninda gösterilecek güvenli kovan baglamini hazirlar."""
+    detail_url = url_for(source_context['detail_endpoint'], id=source_context['id'])
+    has_location = (
+        source_context.get('location_latitude') is not None
+        and source_context.get('location_longitude') is not None
+    )
+    return {
+        **source_context,
+        'has_location': has_location,
+        'message_url': url_for(
+            'public_message',
+            kaynak_turu=source_context['type'],
+            kaynak_id=source_context['id'],
+        ),
+        'login_url': url_for('login', next=detail_url),
+    }
 
 
 def is_overdue(son_kontrol_tarihi, threshold_days=7):
@@ -1197,15 +1338,33 @@ def public_home():
     )
 
 
+@app.route('/q/fixed/<int:id>')
+def public_qr_fixed(id):
+    """Sabit kovan QR girisini tek public akisa yonlendirir."""
+    return redirect(url_for('fixed_hive_detail', id=id))
+
+
+@app.route('/q/swarm/<int:id>')
+def public_qr_swarm(id):
+    """Ogul kovani QR girisini tek public akisa yonlendirir."""
+    return redirect(url_for('swarm_detail', id=id))
+
+
 @app.route('/mesaj-birak', methods=['GET', 'POST'])
 def public_message():
     """Ziyaretcilerden mesaj alir."""
+    source_context = get_message_source_context(
+        request.values.get('kaynak_turu') or request.values.get('source_type'),
+        request.values.get('kaynak_id') or request.values.get('source_id'),
+    )
     form = {
         'ad': '',
         'iletisim': '',
-        'kategori': 'Diğer',
+        'kategori': HIVE_MESSAGE_CATEGORIES[0] if source_context else 'Diğer',
         'konu': '',
         'mesaj': '',
+        'kaynak_turu': source_context['type'] if source_context else '',
+        'kaynak_id': str(source_context['id']) if source_context else '',
     }
 
     if request.method == 'POST':
@@ -1219,13 +1378,21 @@ def public_message():
             key: request.form.get(key, defaults[key]).strip()
             for key in defaults
         }
+        source_context = get_message_source_context(
+            form['kaynak_turu'],
+            form['kaynak_id'],
+        )
+        if source_context:
+            form['kaynak_turu'] = source_context['type']
+            form['kaynak_id'] = str(source_context['id'])
+
         errors = []
-        if not form['ad']:
-            errors.append('Ad alanı zorunludur.')
         if not form['mesaj']:
             errors.append('Mesaj alanı zorunludur.')
         if form['kategori'] not in PUBLIC_MESSAGE_CATEGORIES:
             errors.append('Konu türü geçersiz.')
+        if (form['kaynak_turu'] or form['kaynak_id']) and not source_context:
+            errors.append('Mesaj kaynağı geçersiz.')
         if len(form['ad']) > 80:
             errors.append('Ad en fazla 80 karakter olabilir.')
         if len(form['iletisim']) > 120:
@@ -1240,24 +1407,35 @@ def public_message():
         else:
             execute_db('''
                 INSERT INTO public_messages
-                (ad, iletisim, kategori, konu, mesaj, ip_adresi, user_agent)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (ad, iletisim, kategori, konu, mesaj, ip_adresi, user_agent,
+                 kaynak_turu, kaynak_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                form['ad'],
+                form['ad'] or 'İsimsiz ziyaretçi',
                 form['iletisim'] or None,
                 form['kategori'],
                 form['konu'] or None,
                 form['mesaj'],
                 request.remote_addr,
                 request.headers.get('User-Agent', '')[:255],
+                source_context['type'] if source_context else None,
+                source_context['id'] if source_context else None,
             ))
             flash('Mesajiniz alindi.', 'success')
+            if source_context:
+                return redirect(url_for(
+                    'public_message',
+                    kaynak_turu=source_context['type'],
+                    kaynak_id=source_context['id'],
+                ))
             return redirect(url_for('public_message'))
 
+    categories = HIVE_MESSAGE_CATEGORIES if source_context else GENERAL_MESSAGE_CATEGORIES
     return render_template(
         'public_message.html',
         form=form,
-        categories=PUBLIC_MESSAGE_CATEGORIES,
+        categories=categories,
+        source_context=source_context,
     )
 
 
@@ -1467,32 +1645,53 @@ def admin_messages():
     status = request.args.get('durum', '').strip()
     category = request.args.get('kategori', '').strip()
     search = request.args.get('q', '').strip()
+    source_label_sql = """
+        CASE
+            WHEN pm.kaynak_turu = 'fixed' AND fh.id IS NOT NULL
+                THEN 'Sabit kovan ' || fh.kovan_no || ' - ' || a.arilik_adi
+            WHEN pm.kaynak_turu = 'fixed'
+                THEN 'Sabit kovan #' || pm.kaynak_id
+            WHEN pm.kaynak_turu = 'swarm' AND sh.id IS NOT NULL
+                THEN 'Oğul kovanı ' || sh.ad
+            WHEN pm.kaynak_turu = 'swarm'
+                THEN 'Oğul kovanı #' || pm.kaynak_id
+            ELSE NULL
+        END
+    """
     params = []
     conditions = []
     if status in PUBLIC_MESSAGE_STATUSES:
-        conditions.append('durum = ?')
+        conditions.append('pm.durum = ?')
         params.append(status)
     if category in PUBLIC_MESSAGE_CATEGORIES:
-        conditions.append('kategori = ?')
+        conditions.append('pm.kategori = ?')
         params.append(category)
     if search:
         like = f"%{search.lower()}%"
-        conditions.append('''
+        conditions.append(f'''
             (
-                lower(ad) LIKE ?
-                OR lower(COALESCE(iletisim, '')) LIKE ?
-                OR lower(COALESCE(konu, '')) LIKE ?
-                OR lower(mesaj) LIKE ?
-                OR lower(COALESCE(yanit_notu, '')) LIKE ?
+                lower(pm.ad) LIKE ?
+                OR lower(COALESCE(pm.iletisim, '')) LIKE ?
+                OR lower(COALESCE(pm.konu, '')) LIKE ?
+                OR lower(pm.mesaj) LIKE ?
+                OR lower(COALESCE(pm.yanit_notu, '')) LIKE ?
+                OR lower(COALESCE({source_label_sql}, '')) LIKE ?
             )
         ''')
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like, like, like])
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ''
 
     messages = query_db(f'''
-        SELECT * FROM public_messages
+        SELECT pm.*, {source_label_sql} AS kaynak_label
+        FROM public_messages pm
+        LEFT JOIN fixed_hives fh
+            ON pm.kaynak_turu = 'fixed' AND pm.kaynak_id = fh.id
+        LEFT JOIN apiaries a
+            ON fh.arilik_id = a.id
+        LEFT JOIN swarm_hives sh
+            ON pm.kaynak_turu = 'swarm' AND pm.kaynak_id = sh.id
         {where_sql}
-        ORDER BY okundu ASC, olusturma_tarihi DESC
+        ORDER BY pm.okundu ASC, pm.olusturma_tarihi DESC
     ''', params)
     unread_count = query_db(
         'SELECT COUNT(*) as count FROM public_messages WHERE okundu = 0',
@@ -2115,8 +2314,17 @@ def swarm_detail(id):
     """Ogul kovani detay sayfasi."""
     hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
     if not hive:
+        if not session.get('authenticated'):
+            flash('Kovan kaydı bulunamadı.', 'error')
+            return redirect(url_for('public_home'))
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('swarm_list'))
+    if not session.get('authenticated'):
+        source_context = get_message_source_context('swarm', id)
+        return render_template(
+            'public_hive.html',
+            hive_context=public_hive_context(source_context),
+        )
     inspections = query_db('''
         SELECT * FROM swarm_inspections
         WHERE swarm_hive_id = ?
@@ -2134,12 +2342,9 @@ def swarm_hive_qr(id):
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('swarm_list'))
 
-    qr_path = hive['qr_kod_yolu'] or f"qrcodes/qr_swarm_{id}.png"
-    qr_abs_path = media_abs_path(qr_path)
-    if not hive['qr_kod_yolu'] or not os.path.exists(qr_abs_path):
-        qr_path = generate_qr_code(id, hive_type='swarm')
-        if hive['qr_kod_yolu'] != qr_path:
-            execute_db('UPDATE swarm_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
+    qr_path = generate_qr_code(id, hive_type='swarm')
+    if hive['qr_kod_yolu'] != qr_path:
+        execute_db('UPDATE swarm_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
 
     return render_template(
         'qr_view.html',
@@ -2148,6 +2353,7 @@ def swarm_hive_qr(id):
         qr_label=hive['ad'],
         qr_sublabel='Oğul Kovanı',
         detail_url=url_for('swarm_detail', id=id),
+        public_qr_url=build_public_url('public_qr_swarm', id=id),
         back_label=f"{hive['ad']} - Oğul Kovanı",
         download_name=f"qr_ogul_{id}.png",
     )
@@ -2482,8 +2688,17 @@ def fixed_hive_detail(id):
         WHERE fh.id = ?
     ''', (id,), one=True)
     if not hive:
+        if not session.get('authenticated'):
+            flash('Kovan kaydı bulunamadı.', 'error')
+            return redirect(url_for('public_home'))
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('apiary_list'))
+    if not session.get('authenticated'):
+        source_context = get_message_source_context('fixed', id)
+        return render_template(
+            'public_hive.html',
+            hive_context=public_hive_context(source_context),
+        )
 
     # Son 5 kontrol kaydi
     inspections = query_db('''
@@ -2586,12 +2801,9 @@ def fixed_hive_qr(id):
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('apiary_list'))
 
-    qr_path = hive['qr_kod_yolu'] or f"qrcodes/qr_hive_{id}.png"
-    qr_abs_path = media_abs_path(qr_path)
-    if not hive['qr_kod_yolu'] or not os.path.exists(qr_abs_path):
-        qr_path = generate_qr_code(id)
-        if hive['qr_kod_yolu'] != qr_path:
-            execute_db('UPDATE fixed_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
+    qr_path = generate_qr_code(id)
+    if hive['qr_kod_yolu'] != qr_path:
+        execute_db('UPDATE fixed_hives SET qr_kod_yolu=? WHERE id=?', (qr_path, id))
 
     return render_template(
         'qr_view.html',
@@ -2600,6 +2812,7 @@ def fixed_hive_qr(id):
         qr_label=hive['kovan_no'],
         qr_sublabel=hive['arilik_adi'],
         detail_url=url_for('fixed_hive_detail', id=id),
+        public_qr_url=build_public_url('public_qr_fixed', id=id),
         back_label=f"{hive['kovan_no']} - {hive['arilik_adi']}",
         download_name=f"qr_{hive['kovan_no']}.png",
     )

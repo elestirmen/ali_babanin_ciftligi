@@ -47,7 +47,7 @@
         <div class="detail-grid">
             {% if hive.cluster_ad %}
             <div class="detail-item full-width">
-                <div class="detail-label">Oğul Mevkii</div>
+                <div class="detail-label">Oğul Noktası</div>
                 <div class="detail-value">
                     <a href="{{ url_for('swarm_cluster_detail', id=hive.cluster_id) }}">{{ hive.cluster_ad }}</a>
                 </div>
@@ -68,7 +68,7 @@
                 <div class="detail-label">Enlem</div>
                 <div class="detail-value">
                     {% if hive.latitude is not none %}{{ hive.latitude }}
-                    {% elif hive.cluster_latitude is not none %}{{ hive.cluster_latitude }} <small class="text-muted">(mevki)</small>
+                    {% elif hive.cluster_latitude is not none %}{{ hive.cluster_latitude }} <small class="text-muted">(nokta)</small>
                     {% else %}Belirtilmedi{% endif %}
                 </div>
             </div>
@@ -76,7 +76,7 @@
                 <div class="detail-label">Boylam</div>
                 <div class="detail-value">
                     {% if hive.longitude is not none %}{{ hive.longitude }}
-                    {% elif hive.cluster_longitude is not none %}{{ hive.cluster_longitude }} <small class="text-muted">(mevki)</small>
+                    {% elif hive.cluster_longitude is not none %}{{ hive.cluster_longitude }} <small class="text-muted">(nokta)</small>
                     {% else %}Belirtilmedi{% endif %}
                 </div>
             </div>

@@ -135,7 +135,7 @@
             return item.arilik_adi || 'Arılık';
         }
         if (type === 'swarm_clusters') {
-            return item.ad || 'Oğul mevkii';
+            return item.ad || 'Oğul noktası';
         }
         return item.ad || item.kovan_no || 'Oğul kovanı';
     }
@@ -143,7 +143,7 @@
     function contextPointTypeLabel(type) {
         if (type === 'fixed_hives') return 'Sabit kovan';
         if (type === 'apiaries') return 'Arılık';
-        if (type === 'swarm_clusters') return 'Oğul mevkii';
+        if (type === 'swarm_clusters') return 'Oğul noktası';
         return 'Oğul kovanı';
     }
 

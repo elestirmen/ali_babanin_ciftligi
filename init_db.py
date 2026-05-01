@@ -30,7 +30,7 @@ def create_tables():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Ogul kovan mevkileri / kumeleri
+    # Ogul kovan noktalari
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS swarm_clusters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,15 +257,15 @@ def insert_sample_data():
     cursor.execute('''
         INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
         VALUES (?, ?, ?, ?)
-    ''', ('Kuzey Oğul Mevkisi', 38.6420, 34.8050,
-          'Urgup-Goreme yolu uzerinde birden fazla ogul kovani icin kullanilan mevki.'))
-    ogul_mevki_id = cursor.lastrowid
+    ''', ('Kuzey Oğul Noktası', 38.6420, 34.8050,
+          'Urgup-Goreme yolu uzerinde birden fazla ogul kovani icin kullanilan nokta.'))
+    ogul_noktasi_id = cursor.lastrowid
 
     # Urgup kuzeybatisi - Kapadokya bolgesi
     cursor.execute('''
         INSERT INTO swarm_hives (cluster_id, ad, latitude, longitude, kurulum_tarihi, son_kontrol_tarihi, durum, ulasim_notu, genel_not, aktif)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (ogul_mevki_id, 'Peri Bacasi Kovan', 38.6420, 34.8050, yirmi_gun_once, uc_gun_once,
+    ''', (ogul_noktasi_id, 'Peri Bacasi Kovan', 38.6420, 34.8050, yirmi_gun_once, uc_gun_once,
           'Arı hareketi var',
           'Urgup-Goreme yolundan saga don, 300m sonra kayaligin altinda',
           'Guneye bakan yamacta, ruzgardan korunakli, peri bacalari yakininda', 1))

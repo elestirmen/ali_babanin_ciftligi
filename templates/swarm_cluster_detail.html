@@ -4,12 +4,12 @@
 
 {% block content %}
 <div class="container">
-    <a href="{{ url_for('swarm_cluster_list') }}" class="back-link">← Oğul Mevkileri</a>
+    <a href="{{ url_for('swarm_cluster_list') }}" class="back-link">← Oğul Noktaları</a>
 
     <div class="page-header">
         <div>
             <h1>{{ cluster.ad }}</h1>
-            <div class="subtitle">Oğul Mevkii</div>
+            <div class="subtitle">Oğul Noktası</div>
         </div>
         <div class="btn-group">
             <a href="{{ url_for('swarm_cluster_edit', id=cluster.id) }}" class="btn btn-outline btn-sm">✏️ Düzenle</a>
@@ -52,7 +52,7 @@
                 🧭 Yol Tarifi Al
             </a>
         {% endif %}
-        <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent">+ Bu Mevkiye Kovan Ekle</a>
+        <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent">+ Bu Noktaya Kovan Ekle</a>
     </div>
 
     {% if hives %}
@@ -76,7 +76,7 @@
                                     {% if hive.latitude is not none and hive.longitude is not none %}
                                         <span>📍 Kovan GPS</span>
                                     {% else %}
-                                        <span>📍 Mevki GPS</span>
+                                        <span>📍 Nokta GPS</span>
                                     {% endif %}
                                 </div>
                             </div>
@@ -88,20 +88,20 @@
     {% else %}
         <div class="empty-state">
             <div class="empty-icon">🏕️</div>
-            <h3>Bu mevkide oğul kovanı yok</h3>
-            <p>Bu mevkiye bağlı ilk oğul kovanını ekleyin.</p>
+            <h3>Bu noktada oğul kovanı yok</h3>
+            <p>Bu noktaya bağlı ilk oğul kovanını ekleyin.</p>
             <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent">+ Oğul Kovanı Ekle</a>
         </div>
     {% endif %}
 
     <div class="danger-zone mt-3">
         <div>
-            <strong>Oğul mevkiini sil</strong>
-            <p>Bu işlem bağlı oğul kovanlarını silmez; yalnızca mevki bağlantılarını kaldırır.</p>
+            <strong>Oğul noktasını sil</strong>
+            <p>Bu işlem bağlı oğul kovanlarını silmez; yalnızca nokta bağlantılarını kaldırır.</p>
         </div>
         <form method="POST" action="{{ url_for('swarm_cluster_delete', id=cluster.id) }}" class="danger-delete-form"
               data-delete-label="{{ cluster.ad }}"
-              data-delete-warning="Bu oğul mevkii silinir; bağlı oğul kovanları tekil kayıt olarak kalır.">
+              data-delete-warning="Bu oğul noktası silinir; bağlı oğul kovanları tekil kayıt olarak kalır.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="confirm_text" value="">
             <button type="submit" class="btn btn-danger">Sil</button>

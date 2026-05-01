@@ -4,7 +4,7 @@
  *
  * Katman mantigi:
  * - Ogul Kovanlari: Her ogul kovani icin tek marker (duplikasyon yok)
- * - Ogul Mevkileri: Birden fazla ogul kovani icin kume/mevki markeri
+ * - Ogul Noktalari: Birden fazla ogul kovani icin yakalama noktasi markeri
  * - Sabit Ariliklar: Ana arilik markeri (popup icinde istatistikler)
  * - Kontrol Gerekenler: Dikkat gerektiren sabit kovanlar (circleMarker, offset ile)
  * - Pasifler: Pasif ogul kovanlari ve sabit kovanlar
@@ -211,7 +211,7 @@
         `;
     }
 
-    // --- Ogul mevki/kume popup'i ---
+    // --- Ogul noktasi popup'i ---
     function createSwarmClusterPopupContent(item) {
         const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`;
         const guideKey = registerGuideTarget('cluster', item.id, item.ad, item.latitude, item.longitude);
@@ -890,7 +890,7 @@
 
     const overlayMaps = {
         '🏕️ Oğul Kovanları': layers.swarmHives,
-        '📍 Oğul Mevkileri': layers.swarmClusters,
+        '📍 Oğul Noktaları': layers.swarmClusters,
         '🏠 Sabit Arılıklar': layers.apiaries,
         '⚠️ Kontrol Gerekenler': layers.kontrolGerekenler,
         '🔇 Pasifler': layers.pasifler,
@@ -944,7 +944,7 @@
                     });
                 }
 
-                // Ogul mevkileri - kume/ust marker
+                // Ogul noktalari - ust marker
                 if (data.swarm_clusters) {
                     data.swarm_clusters.forEach(item => {
                         let color = 'green';

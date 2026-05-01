@@ -288,14 +288,14 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         token = self.login()
         response = self.client.post('/swarm-clusters/new', data={
             'csrf_token': token,
-            'ad': 'Dere Mevkii',
+            'ad': 'Dere Noktası',
             'latitude': '38.6501',
             'longitude': '34.8402',
             'aciklama': 'Dere kenarindaki ortak nokta.',
         })
         self.assertEqual(response.status_code, 302)
         cluster = self.fetch_one('SELECT id, ad FROM swarm_clusters')
-        self.assertEqual(cluster['ad'], 'Dere Mevkii')
+        self.assertEqual(cluster['ad'], 'Dere Noktası')
 
         response = self.client.post('/swarm-hives/new', data={
             'csrf_token': token,
@@ -707,7 +707,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         app_module.execute_db(
             '''INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
                VALUES (?, ?, ?, ?)''',
-            ('Dere Mevkii', 38.62, 34.81, 'Oğul noktası')
+            ('Dere Noktası', 38.62, 34.81, 'Oğul noktası')
         )
         apiary_id = app_module.execute_db(
             'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
@@ -727,7 +727,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
 
         expected = {
             '/admin/export/swarm-hives.csv': 'ogul_kovanlari_',
-            '/admin/export/swarm-clusters.csv': 'ogul_mevkileri_',
+            '/admin/export/swarm-clusters.csv': 'ogul_noktalari_',
             '/admin/export/fixed-hives.csv': 'sabit_kovanlar_',
             '/admin/export/inspections.csv': 'kontrol_kayitlari_',
             '/admin/export/apiary-summary.csv': 'arilik_ozeti_',
@@ -765,7 +765,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         app_module.execute_db(
             '''INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
                VALUES (?, ?, ?, ?)''',
-            ('Dere Mevkii', 38.62, 34.81, 'Oğul noktası')
+            ('Dere Noktası', 38.62, 34.81, 'Oğul noktası')
         )
         apiary_id = app_module.execute_db(
             'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
@@ -785,7 +785,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
 
         expected = {
             '/admin/export/swarm-hives.xlsx': ('ogul_kovanlari_', 'Oğul Kovanları'),
-            '/admin/export/swarm-clusters.xlsx': ('ogul_mevkileri_', 'Oğul Mevkileri'),
+            '/admin/export/swarm-clusters.xlsx': ('ogul_noktalari_', 'Oğul Noktaları'),
             '/admin/export/fixed-hives.xlsx': ('sabit_kovanlar_', 'Sabit Kovanlar'),
             '/admin/export/inspections.xlsx': ('kontrol_kayitlari_', 'Kontrol Kayıtları'),
             '/admin/export/apiary-summary.xlsx': ('arilik_ozeti_', 'Arılık Özeti'),
@@ -805,7 +805,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
                 self.assertEqual(workbook.sheetnames, [sheet_name])
                 sheet = workbook[sheet_name]
                 self.assertGreater(len(sheet.tables), 0)
-                if sheet_name in {'Oğul Kovanları', 'Oğul Mevkileri', 'Sabit Kovanlar', 'Arılık Özeti'}:
+                if sheet_name in {'Oğul Kovanları', 'Oğul Noktaları', 'Sabit Kovanlar', 'Arılık Özeti'}:
                     headers = [cell.value for cell in sheet[1]]
                     maps_col = headers.index('Google Maps yol tarifi linki') + 1
                     self.assertIsNotNone(sheet.cell(row=2, column=maps_col).hyperlink)
@@ -830,7 +830,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         workbook = load_workbook(BytesIO(response.data))
         self.assertEqual(workbook.sheetnames, [
             'Oğul Kovanları',
-            'Oğul Mevkileri',
+            'Oğul Noktaları',
             'Arılıklar',
             'Sabit Kovanlar',
             'Kontrol Kayıtları',

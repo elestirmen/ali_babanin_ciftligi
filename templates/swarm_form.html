@@ -16,14 +16,14 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% set selected_cluster_id = (hive.cluster_id if hive and hive.cluster_id else request.form.get('cluster_id', request.args.get('cluster_id', ''))) %}
                 <div class="form-group">
-                    <label for="cluster_id">Oğul Mevkii / Kümesi</label>
+                    <label for="cluster_id">Bağlı Oğul Noktası</label>
                     <select id="cluster_id" name="cluster_id" class="form-control">
                         <option value="">Tekil kovan</option>
                         {% for cluster in clusters %}
                             <option value="{{ cluster.id }}" {% if selected_cluster_id|string == cluster.id|string %}selected{% endif %}>{{ cluster.ad }}</option>
                         {% endfor %}
                     </select>
-                    <div class="hint">Aynı arazi noktasındaki birden fazla oğul kovanını birlikte takip etmek için seçin.</div>
+                    <div class="hint">Kovanı bir oğul yakalama noktasına bağlamak için seçin.</div>
                 </div>
 
                 <div class="form-group">

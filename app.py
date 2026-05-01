@@ -598,7 +598,7 @@ def csv_download_response(filename, headers, rows):
 
 def swarm_export_data():
     headers = [
-        'ID', 'Oğul mevkii', 'Kovan adı', 'Durum', 'Latitude', 'Longitude', 'Kurulum tarihi',
+        'ID', 'Oğul noktası', 'Kovan adı', 'Durum', 'Latitude', 'Longitude', 'Kurulum tarihi',
         'Son kontrol tarihi', 'Aktif', 'Ulaşım notu', 'Genel not',
         'Google Maps yol tarifi linki'
     ]
@@ -898,7 +898,7 @@ def excel_download_response():
     workbook.remove(workbook.active)
     for index, (title, data_func) in enumerate([
         ('Oğul Kovanları', swarm_export_data),
-        ('Oğul Mevkileri', swarm_cluster_excel_data),
+        ('Oğul Noktaları', swarm_cluster_excel_data),
         ('Arılıklar', apiary_excel_data),
         ('Sabit Kovanlar', fixed_hive_export_data),
         ('Kontrol Kayıtları', inspection_export_data),
@@ -943,14 +943,14 @@ def export_dataset_options():
     return [
         {
             'title': 'Oğul Kovanları',
-            'description': 'Oğul kovan konumları, mevkileri, durumları, notları ve yol tarifi linkleri.',
+            'description': 'Oğul kovan konumları, bağlı noktaları, durumları, notları ve yol tarifi linkleri.',
             'count': len(swarm_export_data()[1]),
             'csv_endpoint': 'admin_export_swarm_hives_csv',
             'xlsx_endpoint': 'admin_export_swarm_hives_xlsx',
         },
         {
-            'title': 'Oğul Mevkileri',
-            'description': 'Birden fazla oğul kovanının yerleştirildiği mevki/küme kayıtları.',
+            'title': 'Oğul Noktaları',
+            'description': 'Oğul yakalama kovanlarının yerleştirildiği arazi noktaları.',
             'count': len(swarm_cluster_export_data()[1]),
             'csv_endpoint': 'admin_export_swarm_clusters_csv',
             'xlsx_endpoint': 'admin_export_swarm_clusters_xlsx',
@@ -1095,28 +1095,28 @@ def delete_confirmation_valid():
 
 
 def swarm_cluster_options():
-    """Oğul kovanı formlarında gösterilecek mevki seçenekleri."""
+    """Oğul kovanı formlarında gösterilecek nokta seçenekleri."""
     return query_db('SELECT * FROM swarm_clusters ORDER BY ad, id')
 
 
 def parse_optional_cluster_id(value):
-    """Formdan gelen opsiyonel oğul mevki ID'sini doğrular."""
+    """Formdan gelen opsiyonel oğul noktası ID'sini doğrular."""
     value = (value or '').strip()
     if not value:
         return None, None
     try:
         cluster_id = int(value)
     except (TypeError, ValueError):
-        return None, 'Oğul mevkii: Geçersiz seçim.'
+        return None, 'Oğul noktası: Geçersiz seçim.'
 
     cluster = query_db('SELECT id FROM swarm_clusters WHERE id = ?', (cluster_id,), one=True)
     if not cluster:
-        return None, 'Oğul mevkii: Seçilen kayıt bulunamadı.'
+        return None, 'Oğul noktası: Seçilen kayıt bulunamadı.'
     return cluster_id, None
 
 
 def cluster_conflict(ad, exclude_id=None):
-    """Ayni adla ikinci oğul mevkii oluşturulmasını engeller."""
+    """Ayni adla ikinci oğul noktası oluşturulmasını engeller."""
     params = [ad]
     exclude_sql = ''
     if exclude_id is not None:
@@ -1128,7 +1128,7 @@ def cluster_conflict(ad, exclude_id=None):
         LIMIT 1
     ''', params, one=True)
     if existing:
-        return 'Bu isimde bir oğul mevkii zaten var.'
+        return 'Bu isimde bir oğul noktası zaten var.'
     return None
 
 
@@ -1875,13 +1875,13 @@ def admin_export_swarm_hives_xlsx():
 @app.route('/admin/export/swarm-clusters.csv')
 def admin_export_swarm_clusters_csv():
     headers, rows = swarm_cluster_export_data()
-    filename = f'ogul_mevkileri_{export_date_suffix()}.csv'
+    filename = f'ogul_noktalari_{export_date_suffix()}.csv'
     return csv_download_response(filename, headers, rows)
 
 
 @app.route('/admin/export/swarm-clusters.xlsx')
 def admin_export_swarm_clusters_xlsx():
-    return single_sheet_excel_response('Oğul Mevkileri', 'ogul_mevkileri', swarm_cluster_excel_data)
+    return single_sheet_excel_response('Oğul Noktaları', 'ogul_noktalari', swarm_cluster_excel_data)
 
 
 @app.route('/admin/export/fixed-hives.csv')
@@ -2455,7 +2455,7 @@ def api_map_data():
             'focused': focus_type == 'swarm' and focus_id == s['id'],
         })
 
-    # Ogul mevkileri / kumeleri
+    # Ogul noktalari
     clusters = query_db('''
         SELECT
             sc.*,
@@ -2571,7 +2571,7 @@ def api_map_data():
 
 @app.route('/swarm-clusters')
 def swarm_cluster_list():
-    """Oğul kovan mevkilerini listeler."""
+    """Oğul kovan noktalarını listeler."""
     clusters = query_db('''
         SELECT
             sc.*,
@@ -2592,7 +2592,7 @@ def swarm_cluster_list():
 
 @app.route('/swarm-clusters/new', methods=['GET', 'POST'])
 def swarm_cluster_new():
-    """Yeni oğul mevkii ekleme."""
+    """Yeni oğul noktası ekleme."""
     if request.method == 'POST':
         ad = request.form.get('ad', '').strip()
         latitude_str = request.form.get('latitude', '').strip()
@@ -2600,7 +2600,7 @@ def swarm_cluster_new():
         aciklama = request.form.get('aciklama', '').strip()
 
         if not ad:
-            flash('Oğul mevkii adı zorunludur.', 'error')
+            flash('Oğul noktası adı zorunludur.', 'error')
             return render_template('swarm_cluster_form.html', cluster=None, edit=False)
 
         lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
@@ -2615,7 +2615,7 @@ def swarm_cluster_new():
             VALUES (?, ?, ?, ?)
         ''', (ad, lat_val, lng_val, aciklama or None))
 
-        flash('Oğul mevkii eklendi.', 'success')
+        flash('Oğul noktası eklendi.', 'success')
         return redirect(url_for('swarm_cluster_list'))
 
     return render_template('swarm_cluster_form.html', cluster=None, edit=False)
@@ -2623,10 +2623,10 @@ def swarm_cluster_new():
 
 @app.route('/swarm-clusters/<int:id>')
 def swarm_cluster_detail(id):
-    """Oğul mevkii detay sayfası."""
+    """Oğul noktası detay sayfası."""
     cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
     if not cluster:
-        flash('Oğul mevkii bulunamadı.', 'error')
+        flash('Oğul noktası bulunamadı.', 'error')
         return redirect(url_for('swarm_cluster_list'))
 
     hives = query_db('''
@@ -2646,10 +2646,10 @@ def swarm_cluster_detail(id):
 
 @app.route('/swarm-clusters/<int:id>/edit', methods=['GET', 'POST'])
 def swarm_cluster_edit(id):
-    """Oğul mevkii düzenleme."""
+    """Oğul noktası düzenleme."""
     cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
     if not cluster:
-        flash('Oğul mevkii bulunamadı.', 'error')
+        flash('Oğul noktası bulunamadı.', 'error')
         return redirect(url_for('swarm_cluster_list'))
 
     if request.method == 'POST':
@@ -2659,7 +2659,7 @@ def swarm_cluster_edit(id):
         aciklama = request.form.get('aciklama', '').strip()
 
         if not ad:
-            flash('Oğul mevkii adı zorunludur.', 'error')
+            flash('Oğul noktası adı zorunludur.', 'error')
             return render_template('swarm_cluster_form.html', cluster=cluster, edit=True)
 
         lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
@@ -2675,7 +2675,7 @@ def swarm_cluster_edit(id):
             WHERE id=?
         ''', (ad, lat_val, lng_val, aciklama or None, id))
 
-        flash('Oğul mevkii güncellendi.', 'success')
+        flash('Oğul noktası güncellendi.', 'success')
         return redirect(url_for('swarm_cluster_detail', id=id))
 
     return render_template('swarm_cluster_form.html', cluster=cluster, edit=True)
@@ -2683,10 +2683,10 @@ def swarm_cluster_edit(id):
 
 @app.route('/swarm-clusters/<int:id>/delete', methods=['POST'])
 def swarm_cluster_delete(id):
-    """Oğul mevkiini siler; bağlı kovanlar tekil kayda döner."""
+    """Oğul noktasını siler; bağlı kovanlar tekil kayda döner."""
     cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
     if not cluster:
-        flash('Oğul mevkii bulunamadı.', 'error')
+        flash('Oğul noktası bulunamadı.', 'error')
         return redirect(url_for('swarm_cluster_list'))
     if not delete_confirmation_valid():
         flash('Silme onayı geçersiz. Silmek için uyarıda SIL yazmanız gerekir.', 'error')
@@ -2705,7 +2705,7 @@ def swarm_cluster_delete(id):
     finally:
         conn.close()
 
-    flash(f"{cluster['ad']} silindi. {hive_count} oğul kovanının mevki bağlantısı kaldırıldı.", 'success')
+    flash(f"{cluster['ad']} silindi. {hive_count} oğul kovanının nokta bağlantısı kaldırıldı.", 'success')
     return redirect(url_for('swarm_cluster_list'))
 
 

@@ -96,6 +96,7 @@
                                 <div class="hive-item-meta">
                                     <span>Sıra {{ h.sira_no }}, Konum {{ h.konum_no }}</span>
                                     <span>📅 {{ h.son_kontrol_tarihi|days_ago }}</span>
+                                    {% if h.latitude is not none and h.longitude is not none %}<span>📍 Kovan GPS</span>{% endif %}
                                     {% if h.ana_ari_yili %}<span>👑 {{ h.ana_ari_yili }}</span>{% endif %}
                                 </div>
                             </div>

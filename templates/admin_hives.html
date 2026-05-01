@@ -11,6 +11,7 @@
         </div>
         <div class="btn-group">
             <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">Yeni Oğul</a>
+            <a href="{{ url_for('swarm_cluster_list') }}" class="btn btn-outline">Oğul Mevkileri</a>
             <a href="{{ url_for('apiary_list') }}" class="btn btn-accent">Arılıklar</a>
         </div>
     </div>
@@ -39,6 +40,7 @@
                     <thead>
                         <tr>
                             <th>Ad</th>
+                            <th>Mevki</th>
                             <th>Durum</th>
                             <th>Son Kontrol</th>
                             <th>Aktif</th>
@@ -48,8 +50,9 @@
                     </thead>
                     <tbody>
                         {% for hive in swarm_hives %}
-                            <tr data-hive-row data-hive-type="swarm" data-active="{{ hive.aktif }}" data-search="{{ hive.ad }} {{ hive.durum }} {{ hive.son_kontrol_tarihi or '' }} {{ 'aktif' if hive.aktif else 'pasif' }}">
+                            <tr data-hive-row data-hive-type="swarm" data-active="{{ hive.aktif }}" data-search="{{ hive.ad }} {{ hive.cluster_ad or '' }} {{ hive.durum }} {{ hive.son_kontrol_tarihi or '' }} {{ 'aktif' if hive.aktif else 'pasif' }}">
                                 <td><strong>{{ hive.ad }}</strong></td>
+                                <td>{{ hive.cluster_ad or 'Tekil' }}</td>
                                 <td>{{ hive.durum }}</td>
                                 <td>{{ hive.son_kontrol_tarihi|format_date }}</td>
                                 <td>{% if hive.aktif %}<span class="badge badge-green">Aktif</span>{% else %}<span class="badge badge-gray">Pasif</span>{% endif %}</td>

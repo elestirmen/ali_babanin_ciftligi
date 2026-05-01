@@ -257,6 +257,23 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertIn(b'locationPickerMap', response.data)
         self.assertIn(b'js/location_picker.js', response.data)
 
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arilik', 38.63, 34.82)
+        )
+        response = self.client.get(f'/apiaries/{apiary_id}/fixed-hives/new')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'locationPickerMap', response.data)
+        self.assertIn(b'js/location_picker.js', response.data)
+
+        response = self.client.get('/swarm-clusters/new')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'locationPickerMap', response.data)
+        self.assertIn(b'js/location_picker.js', response.data)
+        self.assertIn(b'data-context-url="/api/map-data"', response.data)
+        self.assertIn(b'data-context-types="swarm_hives"', response.data)
+        self.assertIn(b'data-radius-meters="50"', response.data)
+
     def test_invalid_swarm_status_is_rejected(self):
         token = self.login()
         response = self.client.post('/swarm-hives/new', data={
@@ -266,6 +283,50 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.count_rows('swarm_hives'), 0)
+
+    def test_swarm_cluster_groups_hives_and_supplies_map_location(self):
+        token = self.login()
+        response = self.client.post('/swarm-clusters/new', data={
+            'csrf_token': token,
+            'ad': 'Dere Mevkii',
+            'latitude': '38.6501',
+            'longitude': '34.8402',
+            'aciklama': 'Dere kenarindaki ortak nokta.',
+        })
+        self.assertEqual(response.status_code, 302)
+        cluster = self.fetch_one('SELECT id, ad FROM swarm_clusters')
+        self.assertEqual(cluster['ad'], 'Dere Mevkii')
+
+        response = self.client.post('/swarm-hives/new', data={
+            'csrf_token': token,
+            'cluster_id': str(cluster['id']),
+            'ad': 'Dere Kovani 1',
+            'durum': 'Boş',
+        })
+        self.assertEqual(response.status_code, 302)
+        hive = self.fetch_one('SELECT id, cluster_id, latitude, longitude FROM swarm_hives')
+        self.assertEqual(hive['cluster_id'], cluster['id'])
+        self.assertIsNone(hive['latitude'])
+        self.assertIsNone(hive['longitude'])
+
+        response = self.client.get(f'/api/map-data?focus=swarm-{hive["id"]}')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(len(data['swarm_clusters']), 1)
+        focused = [item for item in data['swarm_hives'] if item['id'] == hive['id']]
+        self.assertEqual(len(focused), 1)
+        self.assertEqual(focused[0]['latitude'], 38.6501)
+        self.assertEqual(focused[0]['longitude'], 34.8402)
+        self.assertFalse(focused[0]['has_own_location'])
+
+        response = self.client.post(f'/swarm-clusters/{cluster["id"]}/delete', data={
+            'csrf_token': token,
+            'confirm_text': 'SIL',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.count_rows('swarm_clusters'), 0)
+        hive = self.fetch_one('SELECT cluster_id FROM swarm_hives')
+        self.assertIsNone(hive['cluster_id'])
 
     def test_duplicate_fixed_hive_number_is_rejected(self):
         token = self.login()
@@ -291,6 +352,37 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.count_rows('fixed_hives'), 1)
+
+    def test_fixed_hive_can_store_own_map_location(self):
+        token = self.login()
+        apiary_id = app_module.execute_db(
+            'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
+            ('Ana Arilik', 38.63, 34.82)
+        )
+
+        response = self.client.post(f'/apiaries/{apiary_id}/fixed-hives/new', data={
+            'csrf_token': token,
+            'kovan_no': 'K9',
+            'sira_no': '1',
+            'konum_no': '1',
+            'latitude': '38.651',
+            'longitude': '34.841',
+            'kat_sayisi': '1',
+            'cerceve_sayisi': '10',
+            'durum': 'Orta',
+        })
+        self.assertEqual(response.status_code, 302)
+        hive = self.fetch_one('SELECT id, latitude, longitude FROM fixed_hives WHERE kovan_no = ?', ('K9',))
+        self.assertEqual(hive['latitude'], 38.651)
+        self.assertEqual(hive['longitude'], 34.841)
+
+        response = self.client.get(f'/api/map-data?focus=fixed-{hive["id"]}')
+        self.assertEqual(response.status_code, 200)
+        fixed_hives = response.get_json()['fixed_hives']
+        self.assertEqual(len(fixed_hives), 1)
+        self.assertEqual(fixed_hives[0]['latitude'], 38.651)
+        self.assertEqual(fixed_hives[0]['longitude'], 34.841)
+        self.assertTrue(fixed_hives[0]['has_own_location'])
 
     def test_public_url_overrides_absolute_url_generation(self):
         previous_public_url = app_module.PUBLIC_URL
@@ -588,6 +680,8 @@ class AppSecurityAndValidationTests(unittest.TestCase):
             '/admin/export',
             '/admin/export/swarm-hives.csv',
             '/admin/export/swarm-hives.xlsx',
+            '/admin/export/swarm-clusters.csv',
+            '/admin/export/swarm-clusters.xlsx',
             '/admin/export/fixed-hives.csv',
             '/admin/export/fixed-hives.xlsx',
             '/admin/export/inspections.csv',
@@ -610,6 +704,11 @@ class AppSecurityAndValidationTests(unittest.TestCase):
                VALUES (?, ?, ?, ?, ?, ?, ?)''',
             ('Dere Kenarı', 38.63, 34.82, 'Boş', '2026-04-01', '2026-04-20', 1)
         )
+        app_module.execute_db(
+            '''INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
+               VALUES (?, ?, ?, ?)''',
+            ('Dere Mevkii', 38.62, 34.81, 'Oğul noktası')
+        )
         apiary_id = app_module.execute_db(
             'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
             ('Ana Arılık', 38.64, 34.83)
@@ -628,6 +727,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
 
         expected = {
             '/admin/export/swarm-hives.csv': 'ogul_kovanlari_',
+            '/admin/export/swarm-clusters.csv': 'ogul_mevkileri_',
             '/admin/export/fixed-hives.csv': 'sabit_kovanlar_',
             '/admin/export/inspections.csv': 'kontrol_kayitlari_',
             '/admin/export/apiary-summary.csv': 'arilik_ozeti_',
@@ -649,6 +749,8 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         self.assertIn(b'<table', response.data)
         self.assertIn(b'/admin/export/swarm-hives.csv', response.data)
         self.assertIn(b'/admin/export/swarm-hives.xlsx', response.data)
+        self.assertIn(b'/admin/export/swarm-clusters.csv', response.data)
+        self.assertIn(b'/admin/export/swarm-clusters.xlsx', response.data)
         self.assertIn(b'/admin/export/all.xlsx', response.data)
         self.assertIn('Excel indir'.encode('utf-8'), response.data)
 
@@ -659,6 +761,11 @@ class AppSecurityAndValidationTests(unittest.TestCase):
                (ad, latitude, longitude, durum)
                VALUES (?, ?, ?, ?)''',
             ('Dere Kenarı', 38.63, 34.82, 'Boş')
+        )
+        app_module.execute_db(
+            '''INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
+               VALUES (?, ?, ?, ?)''',
+            ('Dere Mevkii', 38.62, 34.81, 'Oğul noktası')
         )
         apiary_id = app_module.execute_db(
             'INSERT INTO apiaries (arilik_adi, latitude, longitude) VALUES (?, ?, ?)',
@@ -678,6 +785,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
 
         expected = {
             '/admin/export/swarm-hives.xlsx': ('ogul_kovanlari_', 'Oğul Kovanları'),
+            '/admin/export/swarm-clusters.xlsx': ('ogul_mevkileri_', 'Oğul Mevkileri'),
             '/admin/export/fixed-hives.xlsx': ('sabit_kovanlar_', 'Sabit Kovanlar'),
             '/admin/export/inspections.xlsx': ('kontrol_kayitlari_', 'Kontrol Kayıtları'),
             '/admin/export/apiary-summary.xlsx': ('arilik_ozeti_', 'Arılık Özeti'),
@@ -697,7 +805,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
                 self.assertEqual(workbook.sheetnames, [sheet_name])
                 sheet = workbook[sheet_name]
                 self.assertGreater(len(sheet.tables), 0)
-                if sheet_name in {'Oğul Kovanları', 'Sabit Kovanlar', 'Arılık Özeti'}:
+                if sheet_name in {'Oğul Kovanları', 'Oğul Mevkileri', 'Sabit Kovanlar', 'Arılık Özeti'}:
                     headers = [cell.value for cell in sheet[1]]
                     maps_col = headers.index('Google Maps yol tarifi linki') + 1
                     self.assertIsNotNone(sheet.cell(row=2, column=maps_col).hyperlink)
@@ -722,6 +830,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         workbook = load_workbook(BytesIO(response.data))
         self.assertEqual(workbook.sheetnames, [
             'Oğul Kovanları',
+            'Oğul Mevkileri',
             'Arılıklar',
             'Sabit Kovanlar',
             'Kontrol Kayıtları',

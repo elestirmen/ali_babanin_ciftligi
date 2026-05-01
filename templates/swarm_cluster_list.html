@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Oğul Mevkileri - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <h1>📍 Oğul Mevkileri</h1>
+            <div class="subtitle">Birden fazla oğul kovanını aynı arazi noktasında gruplandırın</div>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('swarm_list') }}" class="btn btn-outline">Oğul Kovanları</a>
+            <a href="{{ url_for('swarm_cluster_new') }}" class="btn btn-accent">+ Yeni Mevki</a>
+        </div>
+    </div>
+
+    {% if clusters %}
+        <div class="hive-list">
+            {% for cluster in clusters %}
+                <a href="{{ url_for('swarm_cluster_detail', id=cluster.id) }}" class="hive-item">
+                    <div class="hive-item-icon" style="background:#FFF8E1;">📍</div>
+                    <div class="hive-item-content">
+                        <div class="hive-item-title">{{ cluster.ad }}</div>
+                        <div class="hive-item-meta">
+                            <span>🏕️ {{ cluster.toplam_kovan_sayisi or 0 }} oğul kovanı</span>
+                            <span>✅ {{ cluster.aktif_kovan_sayisi or 0 }} aktif</span>
+                            {% if cluster.kontrol_gereken_kovan_sayisi %}
+                                <span>⚠️ {{ cluster.kontrol_gereken_kovan_sayisi }} kontrol gereken</span>
+                            {% endif %}
+                            {% if cluster.aciklama %}
+                                <span>• {{ cluster.aciklama[:60] }}{% if cluster.aciklama|length > 60 %}...{% endif %}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📍</div>
+            <h3>Henüz oğul mevkii eklenmemiş</h3>
+            <p>Birden fazla oğul kovanını aynı arazi noktasında takip etmek için mevki ekleyin.</p>
+            <a href="{{ url_for('swarm_cluster_new') }}" class="btn btn-accent">+ Yeni Mevki Ekle</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

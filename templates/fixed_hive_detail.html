@@ -50,6 +50,18 @@
                 <div class="detail-value">Sıra {{ hive.sira_no }}, Konum {{ hive.konum_no }}</div>
             </div>
             <div class="detail-item">
+                <div class="detail-label">Kovan GPS</div>
+                <div class="detail-value">
+                    {% if hive.latitude is not none and hive.longitude is not none %}
+                        {{ hive.latitude }}, {{ hive.longitude }}
+                    {% elif hive.apiary_latitude is not none and hive.apiary_longitude is not none %}
+                        Arılık konumu kullanılıyor
+                    {% else %}
+                        Belirtilmedi
+                    {% endif %}
+                </div>
+            </div>
+            <div class="detail-item">
                 <div class="detail-label">Ana Arı Yılı</div>
                 <div class="detail-value">{{ hive.ana_ari_yili if hive.ana_ari_yili else 'Belirtilmedi' }}</div>
             </div>
@@ -82,12 +94,18 @@
     </div>
 
     <!-- Aksiyon Butonları -->
+    {% set nav_latitude = hive.latitude if hive.latitude is not none else hive.apiary_latitude %}
+    {% set nav_longitude = hive.longitude if hive.longitude is not none else hive.apiary_longitude %}
     <div class="btn-group mb-2">
         <a href="{{ url_for('inspection_new', id=hive.id) }}" class="btn btn-accent">📋 Yeni Kontrol Kaydı</a>
         <a href="{{ url_for('inspection_history', id=hive.id) }}" class="btn btn-outline">📜 Kontrol Geçmişi</a>
         <a href="{{ url_for('fixed_hive_qr', id=hive.id) }}" class="btn btn-outline">📱 QR Kod</a>
-        {% if hive.apiary_latitude and hive.apiary_longitude %}
+        {% if nav_latitude is not none and nav_longitude is not none %}
             <a href="{{ url_for('index', focus='fixed-' ~ hive.id) }}" class="btn btn-outline">🗺️ Haritada Göster</a>
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ nav_latitude }},{{ nav_longitude }}"
+               target="_blank" rel="noopener" class="btn btn-success">
+                🧭 Yol Tarifi Al
+            </a>
         {% endif %}
     </div>
 

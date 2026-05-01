@@ -54,6 +54,34 @@
 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="latitude">Enlem (Latitude)</label>
+                        <input type="number" step="any" id="latitude" name="latitude" class="form-control"
+                               value="{{ hive.latitude if hive and hive.latitude is not none else '' }}" placeholder="{{ apiary.latitude if apiary and apiary.latitude is not none else '38.6300' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="longitude">Boylam (Longitude)</label>
+                        <input type="number" step="any" id="longitude" name="longitude" class="form-control"
+                               value="{{ hive.longitude if hive and hive.longitude is not none else '' }}" placeholder="{{ apiary.longitude if apiary and apiary.longitude is not none else '34.8200' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-outline btn-block" id="btnGetLocation">
+                        📍 Mevcut Konumumu Al
+                    </button>
+                    <div class="hint" id="locationStatus"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="locationPickerMap">Haritadan Kovan Konumu Seç</label>
+                    <div id="locationPickerMap" class="location-picker-map"
+                         data-default-lat="{{ hive.latitude if hive and hive.latitude is not none else (apiary.latitude if apiary and apiary.latitude is not none else 38.63) }}"
+                         data-default-lng="{{ hive.longitude if hive and hive.longitude is not none else (apiary.longitude if apiary and apiary.longitude is not none else 34.82) }}"></div>
+                    <div class="hint">Boş bırakılırsa haritada arılığın konumu kullanılır.</div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="ana_ari_yili">Ana Arı Yılı</label>
                         <input type="number" id="ana_ari_yili" name="ana_ari_yili" class="form-control"
                                value="{{ hive.ana_ari_yili if hive and hive.ana_ari_yili else '' }}" placeholder="2024" min="2000" max="2099">
@@ -112,4 +140,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/location_picker.js', v=asset_version) }}"></script>
 {% endblock %}

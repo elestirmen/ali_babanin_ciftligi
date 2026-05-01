@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}{{ cluster.ad }} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('swarm_cluster_list') }}" class="back-link">← Oğul Mevkileri</a>
+
+    <div class="page-header">
+        <div>
+            <h1>{{ cluster.ad }}</h1>
+            <div class="subtitle">Oğul Mevkii</div>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('swarm_cluster_edit', id=cluster.id) }}" class="btn btn-outline btn-sm">✏️ Düzenle</a>
+            <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent btn-sm">+ Oğul Kovanı</a>
+        </div>
+    </div>
+
+    <div class="detail-section">
+        <div class="detail-grid">
+            <div class="detail-item">
+                <div class="detail-label">Toplam Kovan</div>
+                <div class="detail-value">{{ stats.toplam }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Aktif</div>
+                <div class="detail-value">{{ stats.aktif }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Enlem</div>
+                <div class="detail-value">{{ cluster.latitude if cluster.latitude is not none else 'Belirtilmedi' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Boylam</div>
+                <div class="detail-value">{{ cluster.longitude if cluster.longitude is not none else 'Belirtilmedi' }}</div>
+            </div>
+            {% if cluster.aciklama %}
+            <div class="detail-item full-width">
+                <div class="detail-label">Açıklama</div>
+                <div class="detail-value">{{ cluster.aciklama }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="btn-group mb-2">
+        {% if cluster.latitude is not none and cluster.longitude is not none %}
+            <a href="{{ url_for('index', focus='cluster-' ~ cluster.id) }}" class="btn btn-outline">🗺️ Haritada Göster</a>
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ cluster.latitude }},{{ cluster.longitude }}"
+               target="_blank" rel="noopener" class="btn btn-success">
+                🧭 Yol Tarifi Al
+            </a>
+        {% endif %}
+        <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent">+ Bu Mevkiye Kovan Ekle</a>
+    </div>
+
+    {% if hives %}
+        <div class="card">
+            <div class="card-header">🏕️ Oğul Kovanları ({{ hives|length }})</div>
+            <div class="card-body" style="padding:0;">
+                <div class="hive-list" style="gap:0;">
+                    {% for hive in hives %}
+                        <a href="{{ url_for('swarm_detail', id=hive.id) }}" class="hive-item {% if not hive.aktif %}inactive{% endif %}" style="border-radius:0; border-left:0; border-right:0; border-top:0; margin:0; box-shadow:none;">
+                            <div class="hive-item-content">
+                                <div class="hive-item-title">{{ hive.ad }}
+                                    <span class="badge
+                                        {% if not hive.aktif or hive.durum in ['Taşındı', 'İptal edildi'] %}badge-gray
+                                        {% elif hive.durum in ['Oğul girdi', 'Ana arı kontrol edildi'] %}badge-green
+                                        {% elif hive.durum == 'Arı hareketi var' %}badge-yellow
+                                        {% elif is_overdue(hive.son_kontrol_tarihi) %}badge-red
+                                        {% else %}badge-blue{% endif %}">{{ hive.durum }}</span>
+                                </div>
+                                <div class="hive-item-meta">
+                                    <span>📅 {{ hive.son_kontrol_tarihi|days_ago }}</span>
+                                    {% if hive.latitude is not none and hive.longitude is not none %}
+                                        <span>📍 Kovan GPS</span>
+                                    {% else %}
+                                        <span>📍 Mevki GPS</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">🏕️</div>
+            <h3>Bu mevkide oğul kovanı yok</h3>
+            <p>Bu mevkiye bağlı ilk oğul kovanını ekleyin.</p>
+            <a href="{{ url_for('swarm_new', cluster_id=cluster.id) }}" class="btn btn-accent">+ Oğul Kovanı Ekle</a>
+        </div>
+    {% endif %}
+
+    <div class="danger-zone mt-3">
+        <div>
+            <strong>Oğul mevkiini sil</strong>
+            <p>Bu işlem bağlı oğul kovanlarını silmez; yalnızca mevki bağlantılarını kaldırır.</p>
+        </div>
+        <form method="POST" action="{{ url_for('swarm_cluster_delete', id=cluster.id) }}" class="danger-delete-form"
+              data-delete-label="{{ cluster.ad }}"
+              data-delete-warning="Bu oğul mevkii silinir; bağlı oğul kovanları tekil kayıt olarak kalır.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_text" value="">
+            <button type="submit" class="btn btn-danger">Sil</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

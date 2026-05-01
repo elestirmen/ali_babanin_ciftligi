@@ -45,6 +45,14 @@
     <!-- Detaylar -->
     <div class="detail-section">
         <div class="detail-grid">
+            {% if hive.cluster_ad %}
+            <div class="detail-item full-width">
+                <div class="detail-label">Oğul Mevkii</div>
+                <div class="detail-value">
+                    <a href="{{ url_for('swarm_cluster_detail', id=hive.cluster_id) }}">{{ hive.cluster_ad }}</a>
+                </div>
+            </div>
+            {% endif %}
             <div class="detail-item">
                 <div class="detail-label">Kurulum Tarihi</div>
                 <div class="detail-value">{{ hive.kurulum_tarihi|format_date }}</div>
@@ -58,11 +66,19 @@
             </div>
             <div class="detail-item">
                 <div class="detail-label">Enlem</div>
-                <div class="detail-value">{{ hive.latitude if hive.latitude else 'Belirtilmedi' }}</div>
+                <div class="detail-value">
+                    {% if hive.latitude is not none %}{{ hive.latitude }}
+                    {% elif hive.cluster_latitude is not none %}{{ hive.cluster_latitude }} <small class="text-muted">(mevki)</small>
+                    {% else %}Belirtilmedi{% endif %}
+                </div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Boylam</div>
-                <div class="detail-value">{{ hive.longitude if hive.longitude else 'Belirtilmedi' }}</div>
+                <div class="detail-value">
+                    {% if hive.longitude is not none %}{{ hive.longitude }}
+                    {% elif hive.cluster_longitude is not none %}{{ hive.cluster_longitude }} <small class="text-muted">(mevki)</small>
+                    {% else %}Belirtilmedi{% endif %}
+                </div>
             </div>
             {% if hive.ulasim_notu %}
             <div class="detail-item full-width">
@@ -80,13 +96,15 @@
     </div>
 
     <!-- Aksiyon butonları -->
+    {% set nav_latitude = hive.latitude if hive.latitude is not none else hive.cluster_latitude %}
+    {% set nav_longitude = hive.longitude if hive.longitude is not none else hive.cluster_longitude %}
     <div class="btn-group mb-2">
         <a href="{{ url_for('swarm_inspection_new', id=hive.id) }}" class="btn btn-accent">📋 Yeni Kontrol Kaydı</a>
         <a href="{{ url_for('swarm_inspection_history', id=hive.id) }}" class="btn btn-outline">📜 Kontrol Geçmişi</a>
         <a href="{{ url_for('swarm_hive_qr', id=hive.id) }}" class="btn btn-outline">📱 QR Kod</a>
-        {% if hive.latitude and hive.longitude %}
+        {% if nav_latitude is not none and nav_longitude is not none %}
             <a href="{{ url_for('index', focus='swarm-' ~ hive.id) }}" class="btn btn-outline">🗺️ Haritada Göster</a>
-            <a href="https://www.google.com/maps/dir/?api=1&destination={{ hive.latitude }},{{ hive.longitude }}"
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ nav_latitude }},{{ nav_longitude }}"
                target="_blank" rel="noopener" class="btn btn-success">
                 🧭 Yol Tarifi Al
             </a>

@@ -4,6 +4,7 @@
  *
  * Katman mantigi:
  * - Ogul Kovanlari: Her ogul kovani icin tek marker (duplikasyon yok)
+ * - Ogul Mevkileri: Birden fazla ogul kovani icin kume/mevki markeri
  * - Sabit Ariliklar: Ana arilik markeri (popup icinde istatistikler)
  * - Kontrol Gerekenler: Dikkat gerektiren sabit kovanlar (circleMarker, offset ile)
  * - Pasifler: Pasif ogul kovanlari ve sabit kovanlar
@@ -77,7 +78,7 @@
     // --- Marker renk belirleme ---
     function parseFocusTarget() {
         const focus = new URLSearchParams(window.location.search).get('focus') || '';
-        const match = focus.match(/^(swarm|fixed|apiary)-(\d+)$/);
+        const match = focus.match(/^(swarm|fixed|apiary|cluster)-(\d+)$/);
         if (!match) return null;
         return {
             type: match[1],
@@ -143,6 +144,7 @@
     function createIcon(color, type) {
         const symbols = {
             swarm: '🏕️',
+            cluster: '📍',
             apiary: '🏠',
             fixed: '📦'
         };
@@ -207,6 +209,47 @@
                 </div>
             </div>
         `;
+    }
+
+    // --- Ogul mevki/kume popup'i ---
+    function createSwarmClusterPopupContent(item) {
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`;
+        const guideKey = registerGuideTarget('cluster', item.id, item.ad, item.latitude, item.longitude);
+
+        const toplam = item.toplam_kovan_sayisi || 0;
+        const aktif = item.aktif_kovan_sayisi || 0;
+        const kontrol = item.kontrol_gereken_sayisi || 0;
+        const pasif = item.pasif_sayisi || 0;
+
+        return `
+            <div>
+                <div class="popup-title">${escapeHtml(item.ad)}</div>
+                <div class="popup-info">
+                    ${item.aciklama ? `<span>${escapeHtml(item.aciklama)}</span>` : ''}
+                    <span>🏕️ Toplam: <b>${toplam}</b> oğul kovanı</span>
+                    <span>✅ Aktif: <b>${aktif}</b></span>
+                    ${kontrol > 0 ? `<span style="color:#D32F2F;font-weight:600;">⚠️ Kontrol gereken: <b>${kontrol}</b></span>` : ''}
+                    ${pasif > 0 ? `<span style="color:#9E9E9E;">🔇 Pasif: <b>${pasif}</b></span>` : ''}
+                </div>
+                <div class="popup-actions">
+                    <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
+                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
+                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function createSwarmClusterRadiusCircle(item) {
+        return L.circle([item.latitude, item.longitude], {
+            radius: 50,
+            color: '#F9A825',
+            weight: 2,
+            opacity: 0.75,
+            fillColor: '#F9A825',
+            fillOpacity: 0.14,
+            interactive: false
+        });
     }
 
     // --- Arilik popup'i (istatistiklerle) ---
@@ -810,11 +853,11 @@
     // --- Ust uste binen kovanlar icin offset hesapla ---
     // Ayni ariliga ait kovanlar icin kucuk offset vererek ust uste binmeyi azalt
     const offsetCounters = {};
-    function getOffset(arilikId) {
-        if (!offsetCounters[arilikId]) {
-            offsetCounters[arilikId] = 0;
+    function getOffset(groupId) {
+        if (!offsetCounters[groupId]) {
+            offsetCounters[groupId] = 0;
         }
-        const index = offsetCounters[arilikId]++;
+        const index = offsetCounters[groupId]++;
         // Daire seklinde offset (her kovan icin farkli aci)
         const angle = (index * 72 + 15) * (Math.PI / 180); // 72 derece aralik
         const radius = 0.0004; // ~40m
@@ -827,6 +870,7 @@
     // --- Layer gruplari ---
     const layers = {
         swarmHives: L.layerGroup(),
+        swarmClusters: L.layerGroup(),
         apiaries: L.layerGroup(),
         kontrolGerekenler: L.layerGroup(),
         pasifler: L.layerGroup(),
@@ -846,6 +890,7 @@
 
     const overlayMaps = {
         '🏕️ Oğul Kovanları': layers.swarmHives,
+        '📍 Oğul Mevkileri': layers.swarmClusters,
         '🏠 Sabit Arılıklar': layers.apiaries,
         '⚠️ Kontrol Gerekenler': layers.kontrolGerekenler,
         '🔇 Pasifler': layers.pasifler,
@@ -872,9 +917,16 @@
                     data.swarm_hives.forEach(item => {
                         const color = getSwarmColor(item.durum, item.aktif, item.overdue);
                         const icon = createIcon(color, 'swarm');
-                        const marker = L.marker([item.latitude, item.longitude], { icon });
+                        let lat = item.latitude;
+                        let lng = item.longitude;
+                        if (!item.has_own_location && item.cluster_id) {
+                            const offset = getOffset(`swarm-${item.cluster_id}`);
+                            lat += offset.lat;
+                            lng += offset.lng;
+                        }
+                        const marker = L.marker([lat, lng], { icon });
                         marker.bindPopup(createPopupContent(item, 'swarm'), { maxWidth: 280 });
-                        rememberMarker('swarm', item.id, marker, item.latitude, item.longitude);
+                        rememberMarker('swarm', item.id, marker, lat, lng);
 
                         if (item.focused) {
                             layers.focus.addLayer(marker);
@@ -888,6 +940,32 @@
                             layers.swarmHives.addLayer(marker);
                         }
 
+                        allCoords.push([lat, lng]);
+                    });
+                }
+
+                // Ogul mevkileri - kume/ust marker
+                if (data.swarm_clusters) {
+                    data.swarm_clusters.forEach(item => {
+                        let color = 'green';
+                        if ((item.toplam_kovan_sayisi || 0) === 0) {
+                            color = 'gray';
+                        } else if ((item.kontrol_gereken_sayisi || 0) > 0) {
+                            color = 'yellow';
+                        }
+                        const icon = createIcon(color, 'cluster');
+                        const radiusCircle = createSwarmClusterRadiusCircle(item);
+                        const marker = L.marker([item.latitude, item.longitude], { icon });
+
+                        marker.bindPopup(createSwarmClusterPopupContent(item), { maxWidth: 280 });
+                        rememberMarker('cluster', item.id, marker, item.latitude, item.longitude);
+                        if (item.focused) {
+                            layers.focus.addLayer(radiusCircle);
+                            layers.focus.addLayer(marker);
+                        } else {
+                            layers.swarmClusters.addLayer(radiusCircle);
+                            layers.swarmClusters.addLayer(marker);
+                        }
                         allCoords.push([item.latitude, item.longitude]);
                     });
                 }
@@ -918,10 +996,13 @@
                         const color = getFixedColor(item.durum, item.aktif, item.overdue);
                         const fillColor = ICON_COLORS[color] || ICON_COLORS.blue;
 
-                        // Offset hesapla (ayni arilik icin farkli pozisyonlar)
-                        const offset = getOffset(item.arilik_id);
-                        const lat = item.latitude + offset.lat;
-                        const lng = item.longitude + offset.lng;
+                        let lat = item.latitude;
+                        let lng = item.longitude;
+                        if (!item.has_own_location) {
+                            const offset = getOffset(`apiary-${item.arilik_id}`);
+                            lat += offset.lat;
+                            lng += offset.lng;
+                        }
 
                         const circleMarker = L.circleMarker([lat, lng], {
                             radius: item.focused ? 11 : 8,

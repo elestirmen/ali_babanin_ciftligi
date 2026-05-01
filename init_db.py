@@ -30,10 +30,24 @@ def create_tables():
     conn = get_db()
     cursor = conn.cursor()
 
+    # Ogul kovan mevkileri / kumeleri
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS swarm_clusters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad TEXT NOT NULL,
+            latitude REAL,
+            longitude REAL,
+            aciklama TEXT,
+            olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    ''')
+
     # Ogul kovanlari tablosu
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS swarm_hives (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cluster_id INTEGER,
             ad TEXT NOT NULL,
             latitude REAL,
             longitude REAL,
@@ -46,9 +60,11 @@ def create_tables():
             qr_kod_yolu TEXT,
             aktif INTEGER DEFAULT 1 CHECK (aktif IN (0, 1)),
             olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
-            guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
+            guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (cluster_id) REFERENCES swarm_clusters(id) ON DELETE SET NULL
         )
     ''')
+    ensure_column(cursor, 'swarm_hives', 'cluster_id', 'INTEGER')
     ensure_column(cursor, 'swarm_hives', 'qr_kod_yolu', 'TEXT')
 
     # Sabit ariliklar tablosu
@@ -72,6 +88,8 @@ def create_tables():
             kovan_no TEXT NOT NULL,
             sira_no INTEGER DEFAULT 1 CHECK (sira_no BETWEEN 1 AND 50),
             konum_no INTEGER DEFAULT 1 CHECK (konum_no BETWEEN 1 AND 50),
+            latitude REAL,
+            longitude REAL,
             ana_ari_yili INTEGER CHECK (ana_ari_yili IS NULL OR ana_ari_yili BETWEEN 2000 AND 2100),
             kat_sayisi INTEGER DEFAULT 1 CHECK (kat_sayisi BETWEEN 1 AND 10),
             cerceve_sayisi INTEGER DEFAULT 10 CHECK (cerceve_sayisi BETWEEN 1 AND 50),
@@ -86,6 +104,8 @@ def create_tables():
             FOREIGN KEY (arilik_id) REFERENCES apiaries(id) ON DELETE CASCADE
         )
     ''')
+    ensure_column(cursor, 'fixed_hives', 'latitude', 'REAL')
+    ensure_column(cursor, 'fixed_hives', 'longitude', 'REAL')
 
     # Kontrol kayitlari tablosu
     cursor.execute('''
@@ -203,6 +223,14 @@ def create_tables():
         CREATE UNIQUE INDEX IF NOT EXISTS idx_fixed_hives_apiary_position
         ON fixed_hives (arilik_id, sira_no, konum_no)
     ''')
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_clusters_ad
+        ON swarm_clusters (ad COLLATE NOCASE)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_swarm_hives_cluster
+        ON swarm_hives (cluster_id)
+    ''')
 
     conn.commit()
     conn.close()
@@ -226,19 +254,26 @@ def insert_sample_data():
     yirmi_gun_once = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 
     # --- Ogul Kovanlari ---
+    cursor.execute('''
+        INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
+        VALUES (?, ?, ?, ?)
+    ''', ('Kuzey Oğul Mevkisi', 38.6420, 34.8050,
+          'Urgup-Goreme yolu uzerinde birden fazla ogul kovani icin kullanilan mevki.'))
+    ogul_mevki_id = cursor.lastrowid
+
     # Urgup kuzeybatisi - Kapadokya bolgesi
     cursor.execute('''
-        INSERT INTO swarm_hives (ad, latitude, longitude, kurulum_tarihi, son_kontrol_tarihi, durum, ulasim_notu, genel_not, aktif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', ('Peri Bacasi Kovan', 38.6420, 34.8050, yirmi_gun_once, uc_gun_once,
+        INSERT INTO swarm_hives (cluster_id, ad, latitude, longitude, kurulum_tarihi, son_kontrol_tarihi, durum, ulasim_notu, genel_not, aktif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (ogul_mevki_id, 'Peri Bacasi Kovan', 38.6420, 34.8050, yirmi_gun_once, uc_gun_once,
           'Arı hareketi var',
           'Urgup-Goreme yolundan saga don, 300m sonra kayaligin altinda',
           'Guneye bakan yamacta, ruzgardan korunakli, peri bacalari yakininda', 1))
 
     cursor.execute('''
-        INSERT INTO swarm_hives (ad, latitude, longitude, kurulum_tarihi, son_kontrol_tarihi, durum, ulasim_notu, genel_not, aktif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', ('Dere Kenari Kovan', 38.6280, 34.8250, yirmi_gun_once, on_gun_once,
+        INSERT INTO swarm_hives (cluster_id, ad, latitude, longitude, kurulum_tarihi, son_kontrol_tarihi, durum, ulasim_notu, genel_not, aktif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (None, 'Dere Kenari Kovan', 38.6280, 34.8250, yirmi_gun_once, on_gun_once,
           'Boş',
           'Mustafapasa yolu uzerinde, dere kenarindaki sogut agacinin yaninda',
           'Su kaynagina yakin, iyi konum', 1))

@@ -251,8 +251,8 @@ def build_public_url(endpoint, **values):
 
 
 def parse_map_focus(value):
-    """Harita odak parametresini (swarm-1/fixed-2/apiary-3) ayrıştırır."""
-    match = re.fullmatch(r'(swarm|fixed|apiary)-(\d+)', value or '')
+    """Harita odak parametresini (swarm-1/fixed-2/apiary-3/cluster-4) ayrıştırır."""
+    match = re.fullmatch(r'(swarm|fixed|apiary|cluster)-(\d+)', value or '')
     if not match:
         return None, None
     return match.group(1), int(match.group(2))
@@ -367,31 +367,75 @@ def execute_db(query, args=()):
     return lastrowid
 
 
+def runtime_table_exists(conn, table):
+    return conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table,)
+    ).fetchone() is not None
+
+
+def runtime_columns(conn, table):
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def ensure_runtime_column(conn, table, column, definition):
+    if runtime_table_exists(conn, table) and column not in runtime_columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def ensure_runtime_schema():
-    """Mevcut kurulumlarda yeni public mesaj kolonlarini ekler."""
+    """Mevcut kurulumlarda yeni kolonlari ve yardımcı tabloları ekler."""
     if not os.path.exists(DB_PATH):
         return
 
     conn = get_db()
     try:
-        table_exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='public_messages'"
-        ).fetchone()
-        if not table_exists:
-            return
-
-        columns = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(public_messages)").fetchall()
-        }
-        if 'kaynak_turu' not in columns:
-            conn.execute('ALTER TABLE public_messages ADD COLUMN kaynak_turu TEXT')
-        if 'kaynak_id' not in columns:
-            conn.execute('ALTER TABLE public_messages ADD COLUMN kaynak_id INTEGER')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_public_messages_source
-            ON public_messages (kaynak_turu, kaynak_id)
+            CREATE TABLE IF NOT EXISTS swarm_clusters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ad TEXT NOT NULL,
+                latitude REAL,
+                longitude REAL,
+                aciklama TEXT,
+                olusturma_tarihi TEXT DEFAULT (datetime('now', 'localtime')),
+                guncelleme_tarihi TEXT DEFAULT (datetime('now', 'localtime'))
+            )
         ''')
+
+        ensure_runtime_column(conn, 'swarm_hives', 'cluster_id', 'INTEGER')
+        ensure_runtime_column(conn, 'swarm_hives', 'qr_kod_yolu', 'TEXT')
+        ensure_runtime_column(conn, 'fixed_hives', 'latitude', 'REAL')
+        ensure_runtime_column(conn, 'fixed_hives', 'longitude', 'REAL')
+
+        if runtime_table_exists(conn, 'public_messages'):
+            for column, definition in [
+                ('kaynak_turu', 'TEXT'),
+                ('kaynak_id', 'INTEGER'),
+                ('iletisim', 'TEXT'),
+                ('kategori', "TEXT DEFAULT 'Diğer'"),
+                ('konu', 'TEXT'),
+                ('ip_adresi', 'TEXT'),
+                ('user_agent', 'TEXT'),
+                ('durum', "TEXT DEFAULT 'Yeni'"),
+                ('yanit_notu', 'TEXT'),
+                ('okundu', 'INTEGER DEFAULT 0'),
+                ('okundu_tarihi', 'TEXT'),
+            ]:
+                ensure_runtime_column(conn, 'public_messages', column, definition)
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_public_messages_source
+                ON public_messages (kaynak_turu, kaynak_id)
+            ''')
+
+        conn.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_clusters_ad
+            ON swarm_clusters (ad COLLATE NOCASE)
+        ''')
+        if runtime_table_exists(conn, 'swarm_hives'):
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_swarm_hives_cluster
+                ON swarm_hives (cluster_id)
+            ''')
         conn.commit()
     finally:
         conn.close()
@@ -554,14 +598,24 @@ def csv_download_response(filename, headers, rows):
 
 def swarm_export_data():
     headers = [
-        'ID', 'Kovan adı', 'Durum', 'Latitude', 'Longitude', 'Kurulum tarihi',
+        'ID', 'Oğul mevkii', 'Kovan adı', 'Durum', 'Latitude', 'Longitude', 'Kurulum tarihi',
         'Son kontrol tarihi', 'Aktif', 'Ulaşım notu', 'Genel not',
         'Google Maps yol tarifi linki'
     ]
     rows = []
-    for hive in query_db('SELECT * FROM swarm_hives ORDER BY id'):
+    hives = query_db('''
+        SELECT sh.*, sc.ad as cluster_ad,
+               sc.latitude as cluster_latitude, sc.longitude as cluster_longitude
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+        ORDER BY COALESCE(sc.ad, ''), sh.id
+    ''')
+    for hive in hives:
+        nav_lat = hive['latitude'] if hive['latitude'] is not None else hive['cluster_latitude']
+        nav_lng = hive['longitude'] if hive['longitude'] is not None else hive['cluster_longitude']
         rows.append([
             hive['id'],
+            hive['cluster_ad'],
             hive['ad'],
             hive['durum'],
             hive['latitude'],
@@ -571,31 +625,79 @@ def swarm_export_data():
             yes_no(hive['aktif']),
             hive['ulasim_notu'],
             hive['genel_not'],
-            google_maps_directions_url(hive['latitude'], hive['longitude']),
+            google_maps_directions_url(nav_lat, nav_lng),
+        ])
+    return headers, rows
+
+
+def swarm_cluster_export_data():
+    headers = [
+        'ID', 'Ad', 'Latitude', 'Longitude', 'Açıklama',
+        'Toplam oğul kovanı', 'Aktif oğul kovanı', 'Pasif oğul kovanı',
+        'Kontrol gereken oğul kovanı', 'Oluşturma tarihi', 'Güncelleme tarihi'
+    ]
+    rows = []
+    clusters = query_db('''
+        SELECT
+            sc.*,
+            COUNT(sh.id) as toplam_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 1 THEN 1 ELSE 0 END) as aktif_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 0 THEN 1 ELSE 0 END) as pasif_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 1 AND (
+                sh.son_kontrol_tarihi IS NULL
+                OR julianday('now', 'localtime') - julianday(sh.son_kontrol_tarihi) > 7
+            ) THEN 1 ELSE 0 END) as kontrol_gereken_kovan_sayisi
+        FROM swarm_clusters sc
+        LEFT JOIN swarm_hives sh ON sh.cluster_id = sc.id
+        GROUP BY sc.id
+        ORDER BY sc.ad, sc.id
+    ''')
+    for cluster in clusters:
+        rows.append([
+            cluster['id'],
+            cluster['ad'],
+            cluster['latitude'],
+            cluster['longitude'],
+            cluster['aciklama'],
+            cluster['toplam_kovan_sayisi'] or 0,
+            cluster['aktif_kovan_sayisi'] or 0,
+            cluster['pasif_kovan_sayisi'] or 0,
+            cluster['kontrol_gereken_kovan_sayisi'] or 0,
+            cluster['olusturma_tarihi'],
+            cluster['guncelleme_tarihi'],
         ])
     return headers, rows
 
 
 def fixed_hive_export_data():
     headers = [
-        'ID', 'Arılık adı', 'Kovan no', 'Sıra no', 'Konum no', 'Ana arı yılı',
+        'ID', 'Arılık adı', 'Kovan no', 'Sıra no', 'Konum no',
+        'Kovan latitude', 'Kovan longitude', 'Arılık latitude', 'Arılık longitude',
+        'Ana arı yılı',
         'Kat sayısı', 'Çerçeve sayısı', 'Durum', 'Son kontrol tarihi',
         'Aktif', 'Genel not', 'Google Maps yol tarifi linki'
     ]
     rows = []
     hives = query_db('''
-        SELECT fh.*, a.arilik_adi, a.latitude, a.longitude
+        SELECT fh.*, a.arilik_adi,
+               a.latitude as apiary_latitude, a.longitude as apiary_longitude
         FROM fixed_hives fh
         JOIN apiaries a ON a.id = fh.arilik_id
         ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no, fh.id
     ''')
     for hive in hives:
+        nav_lat = hive['latitude'] if hive['latitude'] is not None else hive['apiary_latitude']
+        nav_lng = hive['longitude'] if hive['longitude'] is not None else hive['apiary_longitude']
         rows.append([
             hive['id'],
             hive['arilik_adi'],
             hive['kovan_no'],
             hive['sira_no'],
             hive['konum_no'],
+            hive['latitude'],
+            hive['longitude'],
+            hive['apiary_latitude'],
+            hive['apiary_longitude'],
             hive['ana_ari_yili'],
             hive['kat_sayisi'],
             hive['cerceve_sayisi'],
@@ -603,7 +705,7 @@ def fixed_hive_export_data():
             hive['son_kontrol_tarihi'],
             yes_no(hive['aktif']),
             hive['genel_not'],
-            google_maps_directions_url(hive['latitude'], hive['longitude']),
+            google_maps_directions_url(nav_lat, nav_lng),
         ])
     return headers, rows
 
@@ -731,6 +833,10 @@ def apiary_excel_data():
     return add_maps_link_column(*apiary_export_data())
 
 
+def swarm_cluster_excel_data():
+    return add_maps_link_column(*swarm_cluster_export_data())
+
+
 def apiary_summary_excel_data():
     return add_maps_link_column(*apiary_summary_export_data())
 
@@ -792,6 +898,7 @@ def excel_download_response():
     workbook.remove(workbook.active)
     for index, (title, data_func) in enumerate([
         ('Oğul Kovanları', swarm_export_data),
+        ('Oğul Mevkileri', swarm_cluster_excel_data),
         ('Arılıklar', apiary_excel_data),
         ('Sabit Kovanlar', fixed_hive_export_data),
         ('Kontrol Kayıtları', inspection_export_data),
@@ -836,14 +943,21 @@ def export_dataset_options():
     return [
         {
             'title': 'Oğul Kovanları',
-            'description': 'Oğul kovan konumları, durumları, notları ve yol tarifi linkleri.',
+            'description': 'Oğul kovan konumları, mevkileri, durumları, notları ve yol tarifi linkleri.',
             'count': len(swarm_export_data()[1]),
             'csv_endpoint': 'admin_export_swarm_hives_csv',
             'xlsx_endpoint': 'admin_export_swarm_hives_xlsx',
         },
         {
+            'title': 'Oğul Mevkileri',
+            'description': 'Birden fazla oğul kovanının yerleştirildiği mevki/küme kayıtları.',
+            'count': len(swarm_cluster_export_data()[1]),
+            'csv_endpoint': 'admin_export_swarm_clusters_csv',
+            'xlsx_endpoint': 'admin_export_swarm_clusters_xlsx',
+        },
+        {
             'title': 'Sabit Kovanlar',
-            'description': 'Arılık adı, kroki bilgileri, durum, aktiflik ve yol tarifi linkleri.',
+            'description': 'Arılık adı, kroki bilgileri, kovan GPS konumu, durum, aktiflik ve yol tarifi linkleri.',
             'count': len(fixed_hive_export_data()[1]),
             'csv_endpoint': 'admin_export_fixed_hives_csv',
             'xlsx_endpoint': 'admin_export_fixed_hives_xlsx',
@@ -978,6 +1092,44 @@ def delete_confirmation_valid():
     """Silme islemlerinde kullanicinin SIL onayini yazdigini kontrol eder."""
     confirmation = request.form.get('confirm_text', '').strip().upper()
     return confirmation in {'SIL', 'SİL'}
+
+
+def swarm_cluster_options():
+    """Oğul kovanı formlarında gösterilecek mevki seçenekleri."""
+    return query_db('SELECT * FROM swarm_clusters ORDER BY ad, id')
+
+
+def parse_optional_cluster_id(value):
+    """Formdan gelen opsiyonel oğul mevki ID'sini doğrular."""
+    value = (value or '').strip()
+    if not value:
+        return None, None
+    try:
+        cluster_id = int(value)
+    except (TypeError, ValueError):
+        return None, 'Oğul mevkii: Geçersiz seçim.'
+
+    cluster = query_db('SELECT id FROM swarm_clusters WHERE id = ?', (cluster_id,), one=True)
+    if not cluster:
+        return None, 'Oğul mevkii: Seçilen kayıt bulunamadı.'
+    return cluster_id, None
+
+
+def cluster_conflict(ad, exclude_id=None):
+    """Ayni adla ikinci oğul mevkii oluşturulmasını engeller."""
+    params = [ad]
+    exclude_sql = ''
+    if exclude_id is not None:
+        exclude_sql = ' AND id != ?'
+        params.append(exclude_id)
+    existing = query_db(f'''
+        SELECT id FROM swarm_clusters
+        WHERE lower(ad) = lower(?){exclude_sql}
+        LIMIT 1
+    ''', params, one=True)
+    if existing:
+        return 'Bu isimde bir oğul mevkii zaten var.'
+    return None
 
 
 def create_swarm_inspection_record(swarm_hive_id, kontrol_tarihi, durum,
@@ -1720,6 +1872,18 @@ def admin_export_swarm_hives_xlsx():
     return single_sheet_excel_response('Oğul Kovanları', 'ogul_kovanlari', swarm_export_data)
 
 
+@app.route('/admin/export/swarm-clusters.csv')
+def admin_export_swarm_clusters_csv():
+    headers, rows = swarm_cluster_export_data()
+    filename = f'ogul_mevkileri_{export_date_suffix()}.csv'
+    return csv_download_response(filename, headers, rows)
+
+
+@app.route('/admin/export/swarm-clusters.xlsx')
+def admin_export_swarm_clusters_xlsx():
+    return single_sheet_excel_response('Oğul Mevkileri', 'ogul_mevkileri', swarm_cluster_excel_data)
+
+
 @app.route('/admin/export/fixed-hives.csv')
 def admin_export_fixed_hives_csv():
     headers, rows = fixed_hive_export_data()
@@ -2109,8 +2273,10 @@ def admin_hives():
         ORDER BY a.arilik_adi, fh.sira_no, fh.konum_no
     ''')
     swarm_hives = query_db('''
-        SELECT * FROM swarm_hives
-        ORDER BY aktif DESC, son_kontrol_tarihi DESC, ad
+        SELECT sh.*, sc.ad as cluster_ad
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+        ORDER BY sh.aktif DESC, COALESCE(sc.ad, ''), sh.son_kontrol_tarihi DESC, sh.ad
     ''')
 
     return render_template(
@@ -2252,23 +2418,34 @@ def api_map_data():
     focus_type, focus_id = parse_map_focus(request.args.get('focus', ''))
     data = {
         'swarm_hives': [],
+        'swarm_clusters': [],
         'apiaries': [],
         'fixed_hives': []
     }
 
     # Ogul kovanlari
-    swarms = query_db('SELECT * FROM swarm_hives')
+    swarms = query_db('''
+        SELECT sh.*, sc.ad as cluster_ad,
+               sc.latitude as cluster_latitude, sc.longitude as cluster_longitude
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+    ''')
     for s in swarms:
-        if not s['latitude'] or not s['longitude']:
+        lat = s['latitude'] if s['latitude'] is not None else s['cluster_latitude']
+        lng = s['longitude'] if s['longitude'] is not None else s['cluster_longitude']
+        if lat is None or lng is None:
             continue
         foto = None
         if s['fotograf_yolu']:
             foto = media_url(s['fotograf_yolu'])
         data['swarm_hives'].append({
             'id': s['id'],
+            'cluster_id': s['cluster_id'],
+            'cluster_ad': s['cluster_ad'],
             'ad': s['ad'],
-            'latitude': s['latitude'],
-            'longitude': s['longitude'],
+            'latitude': lat,
+            'longitude': lng,
+            'has_own_location': s['latitude'] is not None and s['longitude'] is not None,
             'durum': s['durum'],
             'son_kontrol_tarihi': s['son_kontrol_tarihi'],
             'aktif': s['aktif'],
@@ -2278,10 +2455,44 @@ def api_map_data():
             'focused': focus_type == 'swarm' and focus_id == s['id'],
         })
 
+    # Ogul mevkileri / kumeleri
+    clusters = query_db('''
+        SELECT
+            sc.*,
+            COUNT(sh.id) as toplam,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 0 THEN 1 ELSE 0 END) as pasif,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 1 AND (
+                sh.durum IN ('Arı hareketi var')
+                OR sh.son_kontrol_tarihi IS NULL
+                OR julianday('now', 'localtime') - julianday(sh.son_kontrol_tarihi) > 7
+            ) THEN 1 ELSE 0 END) as kontrol_gereken
+        FROM swarm_clusters sc
+        LEFT JOIN swarm_hives sh ON sh.cluster_id = sc.id
+        GROUP BY sc.id
+    ''')
+    for cluster in clusters:
+        if cluster['latitude'] is None or cluster['longitude'] is None:
+            continue
+        toplam = cluster['toplam'] or 0
+        pasif = cluster['pasif'] or 0
+        data['swarm_clusters'].append({
+            'id': cluster['id'],
+            'ad': cluster['ad'],
+            'latitude': cluster['latitude'],
+            'longitude': cluster['longitude'],
+            'aciklama': cluster['aciklama'],
+            'toplam_kovan_sayisi': toplam,
+            'aktif_kovan_sayisi': max(toplam - pasif, 0),
+            'pasif_sayisi': pasif,
+            'kontrol_gereken_sayisi': cluster['kontrol_gereken'] or 0,
+            'detail_url': url_for('swarm_cluster_detail', id=cluster['id']),
+            'focused': focus_type == 'cluster' and focus_id == cluster['id'],
+        })
+
     # Ariliklar - toplam/kontrol gereken/pasif sayilari ile
     apiaries_raw = query_db('SELECT * FROM apiaries')
     for a in apiaries_raw:
-        if not a['latitude'] or not a['longitude']:
+        if a['latitude'] is None or a['longitude'] is None:
             continue
 
         # Bu ariliga ait kovan istatistikleri
@@ -2318,10 +2529,13 @@ def api_map_data():
         fixed_focus_sql = ' OR fh.id = ?'
         fixed_params.append(focus_id)
     fixed = query_db('''
-        SELECT fh.*, a.latitude as a_lat, a.longitude as a_lng, a.arilik_adi
+        SELECT fh.*, a.latitude as a_lat, a.longitude as a_lng, a.arilik_adi,
+               COALESCE(fh.latitude, a.latitude) as display_latitude,
+               COALESCE(fh.longitude, a.longitude) as display_longitude
         FROM fixed_hives fh
         JOIN apiaries a ON fh.arilik_id = a.id
-        WHERE a.latitude IS NOT NULL AND a.longitude IS NOT NULL
+        WHERE COALESCE(fh.latitude, a.latitude) IS NOT NULL
+        AND COALESCE(fh.longitude, a.longitude) IS NOT NULL
         AND ((
             fh.aktif = 0
             OR fh.durum = 'Pasif'
@@ -2337,8 +2551,9 @@ def api_map_data():
             'kovan_no': f['kovan_no'],
             'arilik_id': f['arilik_id'],
             'arilik_adi': f['arilik_adi'],
-            'latitude': f['a_lat'],
-            'longitude': f['a_lng'],
+            'latitude': f['display_latitude'],
+            'longitude': f['display_longitude'],
+            'has_own_location': f['latitude'] is not None and f['longitude'] is not None,
             'durum': f['durum'],
             'son_kontrol_tarihi': f['son_kontrol_tarihi'],
             'aktif': f['aktif'],
@@ -2354,10 +2569,155 @@ def api_map_data():
 # Modul 1: Ogul Kovanlari
 # ---------------------------------------------------------------------------
 
+@app.route('/swarm-clusters')
+def swarm_cluster_list():
+    """Oğul kovan mevkilerini listeler."""
+    clusters = query_db('''
+        SELECT
+            sc.*,
+            COUNT(sh.id) as toplam_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 1 THEN 1 ELSE 0 END) as aktif_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 0 THEN 1 ELSE 0 END) as pasif_kovan_sayisi,
+            SUM(CASE WHEN sh.id IS NOT NULL AND sh.aktif = 1 AND (
+                sh.son_kontrol_tarihi IS NULL
+                OR julianday('now', 'localtime') - julianday(sh.son_kontrol_tarihi) > 7
+            ) THEN 1 ELSE 0 END) as kontrol_gereken_kovan_sayisi
+        FROM swarm_clusters sc
+        LEFT JOIN swarm_hives sh ON sh.cluster_id = sc.id
+        GROUP BY sc.id
+        ORDER BY sc.ad, sc.id
+    ''')
+    return render_template('swarm_cluster_list.html', clusters=clusters)
+
+
+@app.route('/swarm-clusters/new', methods=['GET', 'POST'])
+def swarm_cluster_new():
+    """Yeni oğul mevkii ekleme."""
+    if request.method == 'POST':
+        ad = request.form.get('ad', '').strip()
+        latitude_str = request.form.get('latitude', '').strip()
+        longitude_str = request.form.get('longitude', '').strip()
+        aciklama = request.form.get('aciklama', '').strip()
+
+        if not ad:
+            flash('Oğul mevkii adı zorunludur.', 'error')
+            return render_template('swarm_cluster_form.html', cluster=None, edit=False)
+
+        lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
+        conflict_error = cluster_conflict(ad)
+        errors = coord_errors + [conflict_error]
+        if any(errors):
+            flash_errors(errors)
+            return render_template('swarm_cluster_form.html', cluster=None, edit=False)
+
+        execute_db('''
+            INSERT INTO swarm_clusters (ad, latitude, longitude, aciklama)
+            VALUES (?, ?, ?, ?)
+        ''', (ad, lat_val, lng_val, aciklama or None))
+
+        flash('Oğul mevkii eklendi.', 'success')
+        return redirect(url_for('swarm_cluster_list'))
+
+    return render_template('swarm_cluster_form.html', cluster=None, edit=False)
+
+
+@app.route('/swarm-clusters/<int:id>')
+def swarm_cluster_detail(id):
+    """Oğul mevkii detay sayfası."""
+    cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
+    if not cluster:
+        flash('Oğul mevkii bulunamadı.', 'error')
+        return redirect(url_for('swarm_cluster_list'))
+
+    hives = query_db('''
+        SELECT * FROM swarm_hives
+        WHERE cluster_id = ?
+        ORDER BY aktif DESC, son_kontrol_tarihi DESC, ad
+    ''', (id,))
+
+    stats = {
+        'toplam': len(hives),
+        'aktif': sum(1 for hive in hives if hive['aktif']),
+        'pasif': sum(1 for hive in hives if not hive['aktif']),
+        'kontrol_gereken': sum(1 for hive in hives if hive['aktif'] and is_overdue(hive['son_kontrol_tarihi'])),
+    }
+    return render_template('swarm_cluster_detail.html', cluster=cluster, hives=hives, stats=stats)
+
+
+@app.route('/swarm-clusters/<int:id>/edit', methods=['GET', 'POST'])
+def swarm_cluster_edit(id):
+    """Oğul mevkii düzenleme."""
+    cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
+    if not cluster:
+        flash('Oğul mevkii bulunamadı.', 'error')
+        return redirect(url_for('swarm_cluster_list'))
+
+    if request.method == 'POST':
+        ad = request.form.get('ad', '').strip()
+        latitude_str = request.form.get('latitude', '').strip()
+        longitude_str = request.form.get('longitude', '').strip()
+        aciklama = request.form.get('aciklama', '').strip()
+
+        if not ad:
+            flash('Oğul mevkii adı zorunludur.', 'error')
+            return render_template('swarm_cluster_form.html', cluster=cluster, edit=True)
+
+        lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
+        conflict_error = cluster_conflict(ad, exclude_id=id)
+        errors = coord_errors + [conflict_error]
+        if any(errors):
+            flash_errors(errors)
+            return render_template('swarm_cluster_form.html', cluster=cluster, edit=True)
+
+        execute_db('''
+            UPDATE swarm_clusters SET ad=?, latitude=?, longitude=?, aciklama=?,
+            guncelleme_tarihi=datetime('now','localtime')
+            WHERE id=?
+        ''', (ad, lat_val, lng_val, aciklama or None, id))
+
+        flash('Oğul mevkii güncellendi.', 'success')
+        return redirect(url_for('swarm_cluster_detail', id=id))
+
+    return render_template('swarm_cluster_form.html', cluster=cluster, edit=True)
+
+
+@app.route('/swarm-clusters/<int:id>/delete', methods=['POST'])
+def swarm_cluster_delete(id):
+    """Oğul mevkiini siler; bağlı kovanlar tekil kayda döner."""
+    cluster = query_db('SELECT * FROM swarm_clusters WHERE id = ?', (id,), one=True)
+    if not cluster:
+        flash('Oğul mevkii bulunamadı.', 'error')
+        return redirect(url_for('swarm_cluster_list'))
+    if not delete_confirmation_valid():
+        flash('Silme onayı geçersiz. Silmek için uyarıda SIL yazmanız gerekir.', 'error')
+        return redirect(url_for('swarm_cluster_detail', id=id))
+
+    hive_count = query_db(
+        'SELECT COUNT(*) as count FROM swarm_hives WHERE cluster_id = ?',
+        (id,),
+        one=True
+    )['count']
+    conn = get_db()
+    try:
+        conn.execute('UPDATE swarm_hives SET cluster_id = NULL WHERE cluster_id = ?', (id,))
+        conn.execute('DELETE FROM swarm_clusters WHERE id = ?', (id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    flash(f"{cluster['ad']} silindi. {hive_count} oğul kovanının mevki bağlantısı kaldırıldı.", 'success')
+    return redirect(url_for('swarm_cluster_list'))
+
+
 @app.route('/swarm-hives')
 def swarm_list():
     """Ogul kovanlarini listeler."""
-    hives = query_db('SELECT * FROM swarm_hives ORDER BY aktif DESC, son_kontrol_tarihi DESC')
+    hives = query_db('''
+        SELECT sh.*, sc.ad as cluster_ad
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+        ORDER BY aktif DESC, COALESCE(sc.ad, ''), son_kontrol_tarihi DESC, sh.ad
+    ''')
     return render_template('swarm_list.html', hives=hives)
 
 
@@ -2365,6 +2725,7 @@ def swarm_list():
 def swarm_new():
     """Yeni ogul kovani ekleme."""
     if request.method == 'POST':
+        cluster_id_raw = request.form.get('cluster_id', '').strip()
         ad = request.form.get('ad', '').strip()
         latitude_str = request.form.get('latitude', '').strip()
         longitude_str = request.form.get('longitude', '').strip()
@@ -2375,13 +2736,16 @@ def swarm_new():
 
         if not ad:
             flash('Kovan adı zorunludur.', 'error')
-            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=False)
 
+        cluster_id, cluster_error = parse_optional_cluster_id(cluster_id_raw)
         durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
         kurulum_tarihi, date_error = validate_date(kurulum_tarihi, 'Kurulum tarihi')
-        if status_error or date_error:
-            flash_errors([status_error, date_error])
-            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+        if cluster_error or status_error or date_error:
+            flash_errors([cluster_error, status_error, date_error])
+            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=False)
 
         # Fotograf yukleme
         fotograf_yolu = None
@@ -2389,7 +2753,8 @@ def swarm_new():
         if file and file.filename:
             fotograf_yolu, exif_lat, exif_lng = save_upload_with_gps(file)
             if not fotograf_yolu:
-                return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+                return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES,
+                                       clusters=swarm_cluster_options(), edit=False)
             # EXIF GPS kontrol (sadece koordinat girilmediyse)
             if not latitude_str or not longitude_str:
                 if exif_lat is not None and exif_lng is not None:
@@ -2404,17 +2769,18 @@ def swarm_new():
         if coord_errors:
             for err in coord_errors:
                 flash(err, 'error')
-            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+            return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=False)
 
         # son_kontrol_tarihi mantigi:
         # Kullanici vermemisse kurulum tarihini kullan, o da yoksa bugunu kullan.
         son_kontrol = kurulum_tarihi or datetime.now().strftime('%Y-%m-%d')
 
         hive_id = execute_db('''
-            INSERT INTO swarm_hives (ad, latitude, longitude, kurulum_tarihi,
+            INSERT INTO swarm_hives (cluster_id, ad, latitude, longitude, kurulum_tarihi,
             son_kontrol_tarihi, durum, ulasim_notu, genel_not, fotograf_yolu)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (ad, lat_val, lng_val, kurulum_tarihi or None,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (cluster_id, ad, lat_val, lng_val, kurulum_tarihi or None,
               son_kontrol, durum, ulasim_notu or None,
               genel_not or None, fotograf_yolu))
         create_swarm_inspection_record(
@@ -2428,13 +2794,20 @@ def swarm_new():
         flash('Ogul kovani basariyla eklendi.', 'success')
         return redirect(url_for('swarm_list'))
 
-    return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES, edit=False)
+    return render_template('swarm_form.html', hive=None, statuses=SWARM_STATUSES,
+                           clusters=swarm_cluster_options(), edit=False)
 
 
 @app.route('/swarm-hives/<int:id>')
 def swarm_detail(id):
     """Ogul kovani detay sayfasi."""
-    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    hive = query_db('''
+        SELECT sh.*, sc.ad as cluster_ad,
+               sc.latitude as cluster_latitude, sc.longitude as cluster_longitude
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+        WHERE sh.id = ?
+    ''', (id,), one=True)
     if not hive:
         if not session.get('authenticated'):
             flash('Kovan kaydı bulunamadı.', 'error')
@@ -2551,12 +2924,19 @@ def swarm_inspection_history(id):
 @app.route('/swarm-hives/<int:id>/edit', methods=['GET', 'POST'])
 def swarm_edit(id):
     """Ogul kovani duzenleme."""
-    hive = query_db('SELECT * FROM swarm_hives WHERE id = ?', (id,), one=True)
+    hive = query_db('''
+        SELECT sh.*, sc.ad as cluster_ad,
+               sc.latitude as cluster_latitude, sc.longitude as cluster_longitude
+        FROM swarm_hives sh
+        LEFT JOIN swarm_clusters sc ON sc.id = sh.cluster_id
+        WHERE sh.id = ?
+    ''', (id,), one=True)
     if not hive:
         flash('Kovan bulunamadi.', 'error')
         return redirect(url_for('swarm_list'))
 
     if request.method == 'POST':
+        cluster_id_raw = request.form.get('cluster_id', '').strip()
         ad = request.form.get('ad', '').strip()
         latitude_str = request.form.get('latitude', '').strip()
         longitude_str = request.form.get('longitude', '').strip()
@@ -2569,14 +2949,17 @@ def swarm_edit(id):
 
         if not ad:
             flash('Kovan adi zorunludur.', 'error')
-            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=True)
 
+        cluster_id, cluster_error = parse_optional_cluster_id(cluster_id_raw)
         durum, status_error = validate_choice(durum, SWARM_STATUSES, 'Durum')
         kurulum_tarihi, kurulum_error = validate_date(kurulum_tarihi, 'Kurulum tarihi')
         son_kontrol_tarihi, kontrol_error = validate_date(son_kontrol_tarihi, 'Son kontrol tarihi')
-        if status_error or kurulum_error or kontrol_error:
-            flash_errors([status_error, kurulum_error, kontrol_error])
-            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+        if cluster_error or status_error or kurulum_error or kontrol_error:
+            flash_errors([cluster_error, status_error, kurulum_error, kontrol_error])
+            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=True)
 
         # Fotograf guncelleme
         fotograf_yolu = hive['fotograf_yolu']
@@ -2584,7 +2967,8 @@ def swarm_edit(id):
         if file and file.filename:
             new_foto, exif_lat, exif_lng = save_upload_with_gps(file)
             if not new_foto:
-                return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+                return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES,
+                                       clusters=swarm_cluster_options(), edit=True)
             fotograf_yolu = new_foto
             if not latitude_str or not longitude_str:
                 if exif_lat is not None and exif_lng is not None:
@@ -2599,21 +2983,23 @@ def swarm_edit(id):
         if coord_errors:
             for err in coord_errors:
                 flash(err, 'error')
-            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+            return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES,
+                                   clusters=swarm_cluster_options(), edit=True)
 
         execute_db('''
-            UPDATE swarm_hives SET ad=?, latitude=?, longitude=?, kurulum_tarihi=?,
+            UPDATE swarm_hives SET cluster_id=?, ad=?, latitude=?, longitude=?, kurulum_tarihi=?,
             son_kontrol_tarihi=?, durum=?, ulasim_notu=?, genel_not=?, fotograf_yolu=?,
             aktif=?, guncelleme_tarihi=datetime('now','localtime')
             WHERE id=?
-        ''', (ad, lat_val, lng_val, kurulum_tarihi or None,
+        ''', (cluster_id, ad, lat_val, lng_val, kurulum_tarihi or None,
               son_kontrol_tarihi or None, durum, ulasim_notu or None,
               genel_not or None, fotograf_yolu, aktif, id))
 
         flash('Ogul kovani guncellendi.', 'success')
         return redirect(url_for('swarm_detail', id=id))
 
-    return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES, edit=True)
+    return render_template('swarm_form.html', hive=hive, statuses=SWARM_STATUSES,
+                           clusters=swarm_cluster_options(), edit=True)
 
 
 # ---------------------------------------------------------------------------
@@ -2743,6 +3129,8 @@ def fixed_hive_new(apiary_id):
         kovan_no = request.form.get('kovan_no', '').strip()
         sira_no = request.form.get('sira_no', '1').strip()
         konum_no = request.form.get('konum_no', '1').strip()
+        latitude_str = request.form.get('latitude', '').strip()
+        longitude_str = request.form.get('longitude', '').strip()
         ana_ari_yili = request.form.get('ana_ari_yili', '').strip()
         kat_sayisi = request.form.get('kat_sayisi', '1').strip()
         cerceve_sayisi = request.form.get('cerceve_sayisi', '10').strip()
@@ -2764,7 +3152,8 @@ def fixed_hive_new(apiary_id):
             ana_ari_yili, 'Ana ari yili', default=None,
             min_val=2000, max_val=datetime.now().year + 1
         )
-        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error]
+        lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
+        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error] + coord_errors
         if any(errors):
             flash_errors(errors)
             return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
@@ -2780,17 +3169,22 @@ def fixed_hive_new(apiary_id):
         fotograf_yolu = None
         file = request.files.get('fotograf')
         if file and file.filename:
-            fotograf_yolu = save_upload(file)
+            fotograf_yolu, exif_lat, exif_lng = save_upload_with_gps(file)
             if not fotograf_yolu:
                 return render_template('fixed_hive_form.html', hive=None, apiary=apiary,
                                        statuses=FIXED_HIVE_STATUSES, edit=False)
+            if (not latitude_str or not longitude_str) and exif_lat is not None and exif_lng is not None:
+                lat_val = exif_lat
+                lng_val = exif_lng
+                flash('GPS bilgisi fotoğraftan otomatik alındı.', 'success')
 
         execute_db('''
             INSERT INTO fixed_hives (arilik_id, kovan_no, sira_no, konum_no, ana_ari_yili,
-            kat_sayisi, cerceve_sayisi, durum, genel_not, fotograf_yolu)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            kat_sayisi, cerceve_sayisi, durum, genel_not, fotograf_yolu, latitude, longitude)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (apiary_id, kovan_no, sira_val, konum_val, ana_ari_val,
-              kat_val, cerceve_val, durum, genel_not or None, fotograf_yolu))
+              kat_val, cerceve_val, durum, genel_not or None, fotograf_yolu,
+              lat_val, lng_val))
 
         flash('Sabit kovan basariyla eklendi.', 'success')
         return redirect(url_for('apiary_detail', id=apiary_id))
@@ -2850,6 +3244,8 @@ def fixed_hive_edit(id):
         kovan_no = request.form.get('kovan_no', '').strip()
         sira_no = request.form.get('sira_no', '1').strip()
         konum_no = request.form.get('konum_no', '1').strip()
+        latitude_str = request.form.get('latitude', '').strip()
+        longitude_str = request.form.get('longitude', '').strip()
         ana_ari_yili = request.form.get('ana_ari_yili', '').strip()
         kat_sayisi = request.form.get('kat_sayisi', '1').strip()
         cerceve_sayisi = request.form.get('cerceve_sayisi', '10').strip()
@@ -2872,7 +3268,8 @@ def fixed_hive_edit(id):
             ana_ari_yili, 'Ana ari yili', default=None,
             min_val=2000, max_val=datetime.now().year + 1
         )
-        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error]
+        lat_val, lng_val, coord_errors = parse_coordinates(latitude_str, longitude_str)
+        errors = [status_error, sira_error, konum_error, kat_error, cerceve_error, ana_ari_error] + coord_errors
         if any(errors):
             flash_errors(errors)
             return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
@@ -2888,20 +3285,24 @@ def fixed_hive_edit(id):
         fotograf_yolu = hive['fotograf_yolu']
         file = request.files.get('fotograf')
         if file and file.filename:
-            new_foto = save_upload(file)
+            new_foto, exif_lat, exif_lng = save_upload_with_gps(file)
             if not new_foto:
                 return render_template('fixed_hive_form.html', hive=hive, apiary=apiary,
                                        statuses=FIXED_HIVE_STATUSES, edit=True)
             fotograf_yolu = new_foto
+            if (not latitude_str or not longitude_str) and exif_lat is not None and exif_lng is not None:
+                lat_val = exif_lat
+                lng_val = exif_lng
+                flash('GPS bilgisi fotoğraftan otomatik alındı.', 'success')
 
         execute_db('''
             UPDATE fixed_hives SET kovan_no=?, sira_no=?, konum_no=?, ana_ari_yili=?,
             kat_sayisi=?, cerceve_sayisi=?, durum=?, genel_not=?, fotograf_yolu=?,
-            aktif=?, guncelleme_tarihi=datetime('now','localtime')
+            latitude=?, longitude=?, aktif=?, guncelleme_tarihi=datetime('now','localtime')
             WHERE id=?
         ''', (kovan_no, sira_val, konum_val, ana_ari_val,
               kat_val, cerceve_val, durum, genel_not or None,
-              fotograf_yolu, aktif, id))
+              fotograf_yolu, lat_val, lng_val, aktif, id))
 
         flash('Kovan guncellendi.', 'success')
         return redirect(url_for('fixed_hive_detail', id=id))

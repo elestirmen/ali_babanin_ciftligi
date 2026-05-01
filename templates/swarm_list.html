@@ -9,7 +9,10 @@
             <h1>🏕️ Oğul Kovanları</h1>
             <div class="subtitle">Köy arazisindeki oğul yakalama kovanları</div>
         </div>
-        <a href="{{ url_for('swarm_new') }}" class="btn btn-accent">+ Yeni Kovan</a>
+        <div class="btn-group">
+            <a href="{{ url_for('swarm_cluster_list') }}" class="btn btn-outline">Oğul Mevkileri</a>
+            <a href="{{ url_for('swarm_new') }}" class="btn btn-accent">+ Yeni Kovan</a>
+        </div>
     </div>
 
     {% if hives %}
@@ -38,6 +41,9 @@
                                 </span>
                             </span>
                             <span>📅 {{ hive.son_kontrol_tarihi|days_ago }}</span>
+                            {% if hive.cluster_ad %}
+                                <span>📍 {{ hive.cluster_ad }}</span>
+                            {% endif %}
                         </div>
                     </div>
                 </a>

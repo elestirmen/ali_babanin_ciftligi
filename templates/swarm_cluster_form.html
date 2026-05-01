@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit %}Oğul Mevkii Düzenle{% else %}Yeni Oğul Mevkii{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('swarm_cluster_list') }}" class="back-link">← Oğul Mevkileri</a>
+
+    <div class="page-header">
+        <h1>{% if edit %}✏️ Oğul Mevkii Düzenle{% else %}📍 Yeni Oğul Mevkii{% endif %}</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="ad">Mevki Adı *</label>
+                    <input type="text" id="ad" name="ad" class="form-control"
+                           value="{{ cluster.ad if cluster else '' }}" placeholder="Örn: Dere Kenarı Mevkii" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="latitude">Enlem (Latitude)</label>
+                        <input type="number" step="any" id="latitude" name="latitude" class="form-control"
+                               value="{{ cluster.latitude if cluster and cluster.latitude is not none else '' }}" placeholder="38.6300">
+                    </div>
+                    <div class="form-group">
+                        <label for="longitude">Boylam (Longitude)</label>
+                        <input type="number" step="any" id="longitude" name="longitude" class="form-control"
+                               value="{{ cluster.longitude if cluster and cluster.longitude is not none else '' }}" placeholder="34.8200">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-outline btn-block" id="btnGetLocation">
+                        📍 Mevcut Konumumu Al
+                    </button>
+                    <div class="hint" id="locationStatus"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="locationPickerMap">Haritadan Konum Seç</label>
+                    <div id="locationPickerMap" class="location-picker-map"
+                         data-default-lat="{{ cluster.latitude if cluster and cluster.latitude is not none else 38.63 }}"
+                         data-default-lng="{{ cluster.longitude if cluster and cluster.longitude is not none else 34.82 }}"
+                         data-context-url="{{ url_for('api_map_data') }}"
+                         data-context-types="swarm_hives"
+                         data-context-label="Mevcut oğul kovanları"
+                         data-radius-meters="50"></div>
+                    <div class="hint">Mevcut oğul kovanları küçük noktalarla, seçilen mevki alanı 50 metrelik saydam daireyle gösterilir.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="aciklama">Açıklama</label>
+                    <textarea id="aciklama" name="aciklama" class="form-control"
+                              placeholder="Mevkiye gidiş, bitki örtüsü veya yerleşim notları...">{{ cluster.aciklama if cluster else '' }}</textarea>
+                </div>
+
+                <hr class="divider">
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">
+                        {% if edit %}💾 Kaydet{% else %}✅ Ekle{% endif %}
+                    </button>
+                    <a href="{{ url_for('swarm_cluster_list') }}" class="btn btn-outline btn-lg">İptal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/location_picker.js', v=asset_version) }}"></script>
+{% endblock %}

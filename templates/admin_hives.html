@@ -6,15 +6,16 @@
 <div class="container admin-wide-container">
     <div class="page-header">
         <div>
-            <h1>Kovan Tablosu</h1>
-            <div class="subtitle"><span id="hiveVisibleCount">{{ total_count }}</span> / {{ total_count }} kayıt gösteriliyor. Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın.</div>
+            <h1>🏠 Arılıklar</h1>
+            <div class="subtitle">Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın. <span id="hiveVisibleCount">{{ total_count }}</span> / {{ total_count }} kayıt.</div>
         </div>
-        <div class="btn-group">
-            <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">Yeni Oğul</a>
-            <a href="{{ url_for('swarm_cluster_list') }}" class="btn btn-outline">Oğul Noktaları</a>
-            <a href="{{ url_for('apiary_list') }}" class="btn btn-accent">Arılıklar</a>
-        </div>
+        <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">+ Yeni Oğul Kovanı</a>
     </div>
+
+    <nav class="section-tabs">
+        <a href="{{ url_for('apiary_list') }}">Arılıklar</a>
+        <a href="{{ url_for('admin_hives') }}" class="active">Tüm Kovanlar<span class="tab-count">{{ total_count }}</span></a>
+    </nav>
 
     <form method="GET" class="table-filter-bar" id="hiveLiveFilter">
         <input type="search" name="q" class="form-control" value="{{ query }}" placeholder="Kovan, arılık veya durum ara" autocomplete="off">

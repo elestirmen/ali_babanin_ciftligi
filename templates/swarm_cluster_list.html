@@ -6,14 +6,16 @@
 <div class="container">
     <div class="page-header">
         <div>
-            <h1>📍 Oğul Noktaları</h1>
-            <div class="subtitle">Oğul yakalama noktalarını ve yaklaşık çalışma alanlarını yönetin</div>
+            <h1>🏕️ Oğullar</h1>
+            <div class="subtitle">Oğul yakalama kovanları ve yerleştirildikleri noktalar</div>
         </div>
-        <div class="btn-group">
-            <a href="{{ url_for('swarm_list') }}" class="btn btn-outline">Oğul Kovanları</a>
-            <a href="{{ url_for('swarm_cluster_new') }}" class="btn btn-accent">+ Yeni Nokta</a>
-        </div>
+        <a href="{{ url_for('swarm_cluster_new') }}" class="btn btn-accent">+ Yeni Nokta</a>
     </div>
+
+    <nav class="section-tabs">
+        <a href="{{ url_for('swarm_list') }}">Kovanlar</a>
+        <a href="{{ url_for('swarm_cluster_list') }}" class="active">Noktalar<span class="tab-count">{{ clusters|length }}</span></a>
+    </nav>
 
     {% if clusters %}
         <div class="hive-list">

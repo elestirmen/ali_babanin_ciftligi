@@ -112,30 +112,29 @@
         }, 180);
     }
 
+    // 3 ana renk + gri (pasif). Babanin bakisini sadelestirir:
+    //   yesil = durum iyi, sari = izle/dikkat, kirmizi = acil git, gri = pasif
     function getSwarmColor(durum, aktif, overdue) {
         if (!aktif) return 'gray';
         if (durum === 'Taşındı' || durum === 'İptal edildi') return 'gray';
         if (overdue) return 'red';
         if (durum === 'Oğul girdi' || durum === 'Ana arı kontrol edildi') return 'green';
-        if (durum === 'Arı hareketi var') return 'yellow';
-        if (durum === 'Boş') return 'blue';
-        return 'blue';
+        // Bos veya ari hareketi var: dikkat (sari)
+        return 'yellow';
     }
 
     function getFixedColor(durum, aktif, overdue) {
         if (!aktif || durum === 'Pasif') return 'gray';
-        if (overdue || durum === 'Kontrol gerekli' || durum === 'Hastalık şüphesi var') return 'red';
+        if (overdue || durum === 'Kontrol gerekli' || durum === 'Hastalık şüphesi var' || durum === 'Zayıf' || durum === 'Ana arı sorunu var') return 'red';
         if (durum === 'Güçlü' || durum === 'Bal durumu iyi') return 'green';
         if (durum === 'Orta') return 'yellow';
-        if (durum === 'Zayıf' || durum === 'Ana arı sorunu var') return 'red';
-        return 'blue';
+        return 'green';
     }
 
     // --- Renk kodlari ---
     const ICON_COLORS = {
         green: '#388E3C',
         yellow: '#F9A825',
-        blue: '#1976D2',
         red: '#D32F2F',
         gray: '#9E9E9E'
     };
@@ -149,7 +148,7 @@
             fixed: '📦'
         };
 
-        const fillColor = ICON_COLORS[color] || ICON_COLORS.blue;
+        const fillColor = ICON_COLORS[color] || ICON_COLORS.green;
         const symbol = symbols[type] || '📍';
 
         const svgIcon = `
@@ -204,8 +203,8 @@
                 </div>
                 <div class="popup-actions">
                     <a href="${detailUrl}" class="popup-detail-btn">Detay</a>
-                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
-                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
+                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-icon-btn popup-nav-btn" title="Yol Tarifi" aria-label="Yol Tarifi">🧭</a>
+                    <button type="button" class="popup-icon-btn popup-guide-btn" data-guide-key="${guideKey}" title="Kuş Uçumu" aria-label="Kuş Uçumu">➡️</button>
                 </div>
             </div>
         `;
@@ -233,8 +232,8 @@
                 </div>
                 <div class="popup-actions">
                     <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
-                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
-                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
+                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-icon-btn popup-nav-btn" title="Yol Tarifi" aria-label="Yol Tarifi">🧭</a>
+                    <button type="button" class="popup-icon-btn popup-guide-btn" data-guide-key="${guideKey}" title="Kuş Uçumu" aria-label="Kuş Uçumu">➡️</button>
                 </div>
             </div>
         `;
@@ -279,8 +278,8 @@
                 </div>
                 <div class="popup-actions">
                     <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
-                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-nav-btn">Yol Tarifi</a>
-                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
+                    <a href="${navUrl}" target="_blank" rel="noopener" class="popup-icon-btn popup-nav-btn" title="Yol Tarifi" aria-label="Yol Tarifi">🧭</a>
+                    <button type="button" class="popup-icon-btn popup-guide-btn" data-guide-key="${guideKey}" title="Kuş Uçumu" aria-label="Kuş Uçumu">➡️</button>
                 </div>
             </div>
         `;
@@ -310,7 +309,7 @@
                 </div>
                 <div class="popup-actions">
                     <a href="${item.detail_url}" class="popup-detail-btn">Detay</a>
-                    <button type="button" class="popup-guide-btn" data-guide-key="${guideKey}">Kuş Uçumu</button>
+                    <button type="button" class="popup-icon-btn popup-guide-btn" data-guide-key="${guideKey}" title="Kuş Uçumu" aria-label="Kuş Uçumu">➡️</button>
                 </div>
             </div>
         `;
@@ -994,7 +993,7 @@
                 if (data.fixed_hives) {
                     data.fixed_hives.forEach(item => {
                         const color = getFixedColor(item.durum, item.aktif, item.overdue);
-                        const fillColor = ICON_COLORS[color] || ICON_COLORS.blue;
+                        const fillColor = ICON_COLORS[color] || ICON_COLORS.green;
 
                         let lat = item.latitude;
                         let lng = item.longitude;
@@ -1033,10 +1032,77 @@
                     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
                 }
                 focusSelectedMarker();
+                renderMapSummary(data);
             })
             .catch(error => {
                 console.error('Harita verisi yuklenemedi:', error);
             });
+    }
+
+    // --- Ozet karti ---
+    function renderMapSummary(data) {
+        const el = document.getElementById('mapSummary');
+        if (!el) return;
+
+        let good = 0;
+        let warn = 0;
+        let alert = 0;
+
+        (data.swarm_hives || []).forEach(item => {
+            if (!item.aktif || item.durum === 'Taşındı' || item.durum === 'İptal edildi') return;
+            if (item.overdue) {
+                alert += 1;
+            } else if (item.durum === 'Arı hareketi var' || item.durum === 'Boş') {
+                warn += 1;
+            } else {
+                good += 1;
+            }
+        });
+
+        (data.fixed_hives || []).forEach(item => {
+            if (!item.aktif || item.durum === 'Pasif') return;
+            if (item.overdue || item.durum === 'Kontrol gerekli' || item.durum === 'Hastalık şüphesi var' || item.durum === 'Zayıf' || item.durum === 'Ana arı sorunu var') {
+                alert += 1;
+            } else if (item.durum === 'Orta') {
+                warn += 1;
+            } else {
+                good += 1;
+            }
+        });
+
+        const total = good + warn + alert;
+        if (total === 0) {
+            el.innerHTML = '<span class="map-summary-loading">Henüz aktif kovan yok</span>';
+            return;
+        }
+
+        const parts = [];
+        parts.push(`<span class="map-summary-item good"><span class="dot"></span>${good}</span>`);
+        if (warn > 0) {
+            parts.push(`<span class="map-summary-item warn"><span class="dot"></span>${warn}</span>`);
+        }
+        if (alert > 0) {
+            parts.push(`<span class="map-summary-item alert"><span class="dot"></span>${alert}</span>`);
+        }
+        el.innerHTML = parts.join('');
+        el.title = `${good} sağlıklı · ${warn} dikkat · ${alert} kontrol gerekiyor`;
+    }
+
+    // --- Hizli ekle FAB ---
+    const fabEl = document.getElementById('mapFab');
+    if (fabEl) {
+        const toggleBtn = fabEl.querySelector('.map-fab-toggle');
+        toggleBtn.addEventListener('click', function (event) {
+            event.stopPropagation();
+            const open = fabEl.classList.toggle('open');
+            toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (event) {
+            if (!fabEl.contains(event.target)) {
+                fabEl.classList.remove('open');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
     }
 
     // Sayfa yuklenince verileri cek

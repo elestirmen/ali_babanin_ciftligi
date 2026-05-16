@@ -5,6 +5,19 @@
 {% block content %}
 <div class="map-page">
     <div id="map"></div>
+
+    <div class="map-summary" id="mapSummary" aria-live="polite">
+        <span class="map-summary-loading">Yükleniyor…</span>
+    </div>
+
+    <div class="map-fab" id="mapFab">
+        <button type="button" class="map-fab-toggle" aria-haspopup="true" aria-expanded="false" aria-label="Hızlı ekle">+</button>
+        <div class="map-fab-menu" role="menu">
+            <a href="{{ url_for('swarm_new') }}" role="menuitem">🏕️ Yeni Oğul Kovanı</a>
+            <a href="{{ url_for('swarm_cluster_new') }}" role="menuitem">📍 Yeni Oğul Noktası</a>
+            <a href="{{ url_for('apiary_new') }}" role="menuitem">🏠 Yeni Arılık</a>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

@@ -23,33 +23,41 @@
 <body>
     <!-- Navbar -->
     <nav class="navbar">
-        <a href="{{ url_for('public_home') }}" class="navbar-brand">
+        <a href="{% if is_authenticated %}{{ url_for('index') }}{% else %}{{ url_for('public_home') }}{% endif %}" class="navbar-brand">
             <img src="{{ url_for('static', filename='img/site-logo.png', v=asset_version) }}" alt="" class="brand-icon" width="34" height="34">
             <span>Ali Baba'nın Çiftliği</span>
         </a>
         <button class="navbar-toggle" id="navToggle" aria-label="Menü">☰</button>
         <ul class="navbar-nav" id="navMenu">
+        {% if is_authenticated %}
+            {# Yönetici için sade navigasyon: 3 ana eylem + Yönetim dropdown #}
+            <li><a href="{{ url_for('index') }}" class="nav-main {% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
+            <li><a href="{{ url_for('swarm_list') }}" class="nav-main {% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğullar</a></li>
+            <li><a href="{{ url_for('apiary_list') }}" class="nav-main {% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') or request.endpoint == 'admin_hives' %}active{% endif %}">🏠 Arılıklar</a></li>
+            <li class="nav-submenu" id="navSubmenu">
+                <button type="button" class="nav-submenu-toggle" aria-haspopup="true" aria-expanded="false">⚙️ Yönetim <span class="caret">▾</span></button>
+                <ul class="nav-submenu-list">
+                    <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">📨 Mesajlar</a></li>
+                    <li><a href="{{ url_for('admin_content') }}" class="{% if request.endpoint in ['admin_content', 'admin_posts', 'admin_post_new', 'admin_post_edit', 'admin_honey_stories', 'admin_honey_story_new', 'admin_honey_story_edit'] %}active{% endif %}">📝 İçerik</a></li>
+                    <li><a href="{{ url_for('admin_export') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_export') %}active{% endif %}">📤 Dışa Aktarma</a></li>
+                    <li><a href="{{ url_for('admin_backups') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_backup') %}active{% endif %}">💾 Yedekleme</a></li>
+                    <li class="nav-submenu-divider"></li>
+                    <li><a href="{{ url_for('public_home') }}">🌐 Halka Açık Site</a></li>
+                    <li>
+                        <form method="POST" action="{{ url_for('logout') }}" class="navbar-logout-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="navbar-logout">🚪 Çıkış</button>
+                        </form>
+                    </li>
+                </ul>
+            </li>
+        {% else %}
+            {# Halka açık navigasyon #}
             <li><a href="{{ url_for('public_home') }}" class="{% if request.endpoint == 'public_home' %}active{% endif %}">Bilgi</a></li>
             <li><a href="{{ url_for('public_journal') }}" class="{% if request.endpoint == 'public_journal' %}active{% endif %}">Günlük</a></li>
             <li><a href="{{ url_for('public_honey_stories') }}" class="{% if request.endpoint in ['public_honey_stories', 'public_honey_story_detail'] %}active{% endif %}">Bal</a></li>
             <li><a href="{{ url_for('public_message') }}" class="{% if request.endpoint == 'public_message' %}active{% endif %}">Mesaj Bırak</a></li>
-        {% if is_authenticated %}
-                <li><a href="{{ url_for('index') }}" class="nav-priority {% if request.endpoint == 'index' %}active{% endif %}">🗺️ Harita</a></li>
-                <li><a href="{{ url_for('admin_hives') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_') and 'hive' in request.endpoint %}active{% endif %}">Kovanlar</a></li>
-                <li><a href="{{ url_for('admin_export') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_export') %}active{% endif %}">Dışa Aktarma</a></li>
-                <li><a href="{{ url_for('admin_backups') }}" class="{% if request.endpoint and request.endpoint.startswith('admin_backup') %}active{% endif %}">Yedekleme</a></li>
-                <li><a href="{{ url_for('admin_content') }}" class="{% if request.endpoint in ['admin_content', 'admin_posts', 'admin_post_new', 'admin_post_edit', 'admin_honey_stories', 'admin_honey_story_new', 'admin_honey_story_edit'] %}active{% endif %}">İçerik</a></li>
-                <li><a href="{{ url_for('admin_messages') }}" class="{% if request.endpoint == 'admin_messages' %}active{% endif %}">Mesajlar</a></li>
-                <li><a href="{{ url_for('swarm_list') }}" class="nav-priority {% if 'swarm' in request.endpoint|default('') %}active{% endif %}">🏕️ Oğul</a></li>
-                <li><a href="{{ url_for('apiary_list') }}" class="nav-priority {% if 'apiary' in request.endpoint|default('') or 'fixed' in request.endpoint|default('') %}active{% endif %}">🏠 Arılık</a></li>
-                <li>
-                    <form method="POST" action="{{ url_for('logout') }}" class="navbar-logout-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="navbar-logout">Çıkış</button>
-                    </form>
-                </li>
-        {% else %}
-                <li><a href="{{ url_for('login') }}">Giriş</a></li>
+            <li><a href="{{ url_for('login') }}">Giriş</a></li>
         {% endif %}
         </ul>
     </nav>
@@ -86,6 +94,24 @@
                 link.addEventListener('click', function() {
                     navMenu.classList.remove('open');
                 });
+            });
+        }
+
+        // Yönetim dropdown
+        var navSubmenu = document.getElementById('navSubmenu');
+        if (navSubmenu) {
+            var submenuToggle = navSubmenu.querySelector('.nav-submenu-toggle');
+            submenuToggle.addEventListener('click', function(event) {
+                event.stopPropagation();
+                var open = navSubmenu.classList.toggle('open');
+                submenuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+            // Dışarı tıklayınca kapat
+            document.addEventListener('click', function(event) {
+                if (!navSubmenu.contains(event.target)) {
+                    navSubmenu.classList.remove('open');
+                    submenuToggle.setAttribute('aria-expanded', 'false');
+                }
             });
         }
 

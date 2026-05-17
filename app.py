@@ -15,7 +15,7 @@ import time
 import uuid
 import warnings
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, request, redirect, url_for,
                    flash, jsonify, session, abort, send_from_directory,
@@ -101,6 +101,9 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = env_bool(
     'ALI_BABA_SESSION_COOKIE_SECURE',
     default=PUBLIC_URL.startswith('https://')
+)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(
+    days=env_int('ALI_BABA_SESSION_LIFETIME_DAYS', 365)
 )
 app.config['LOGIN_FAILED_RATE_LIMIT'] = env_int('ALI_BABA_LOGIN_FAILED_RATE_LIMIT', 8)
 app.config['LOGIN_FAILED_RATE_WINDOW'] = env_int('ALI_BABA_LOGIN_FAILED_RATE_WINDOW', 15 * 60)
@@ -1543,6 +1546,7 @@ def login():
                 next_url = url_for('index')
 
             session.clear()
+            session.permanent = True
             session['authenticated'] = True
             session['_csrf_token'] = secrets.token_urlsafe(32)
             clear_rate_limit('login_failed', identifier)

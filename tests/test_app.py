@@ -86,6 +86,8 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         response = self.client.post('/login', data={'password': 'alibaba'})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['Location'], '/admin')
+        with self.client.session_transaction() as sess:
+            self.assertTrue(sess.permanent)
 
     def test_security_headers_and_session_cookie_flags(self):
         response = self.client.get('/')
@@ -98,6 +100,7 @@ class AppSecurityAndValidationTests(unittest.TestCase):
         cookie = response.headers.get('Set-Cookie', '')
         self.assertIn('HttpOnly', cookie)
         self.assertIn('SameSite=Lax', cookie)
+        self.assertIn('Expires=', cookie)
 
     def test_failed_login_rate_limit(self):
         old_limit = app_module.app.config['LOGIN_FAILED_RATE_LIMIT']

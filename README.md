@@ -158,6 +158,7 @@ python app.py
 | `ALI_BABA_PROXY_FIX` | `ProxyFix` (X-Forwarded-*) | Docker’da `1` |
 | `ALI_BABA_REQUIRE_SECURE_PASSWORD` | Zayıf prod parolalarını reddeder | Docker’da `1` |
 | `ALI_BABA_SESSION_COOKIE_SECURE` | Oturum çerezini yalnız HTTPS’te gönderir | `PUBLIC_URL` `https://` ise varsayılan `1`; lokal HTTP için `0` |
+| `ALI_BABA_SESSION_LIFETIME_DAYS` | Başarılı girişten sonra aynı tarayıcıdaki oturum süresi | `365` |
 | `ALI_BABA_LOGIN_FAILED_RATE_LIMIT` | IP başına hatalı giriş denemesi sınırı | `8` |
 | `ALI_BABA_LOGIN_FAILED_RATE_WINDOW` | Hatalı giriş limiti zaman penceresi (saniye) | `900` |
 | `ALI_BABA_PUBLIC_MESSAGE_RATE_LIMIT` | IP başına public mesaj gönderim sınırı | `5` |

@@ -6,16 +6,11 @@
 <div class="container admin-wide-container">
     <div class="page-header">
         <div>
-            <h1>🏠 Arılıklar</h1>
+            <h1>📋 Kovan Tablosu</h1>
             <div class="subtitle">Oğul ve sabit kovanları tek ekranda görüp hızlı durum güncellemesi yapın. <span id="hiveVisibleCount">{{ total_count }}</span> / {{ total_count }} kayıt.</div>
         </div>
-        <a href="{{ url_for('swarm_new') }}" class="btn btn-outline">+ Yeni Oğul Kovanı</a>
+        <a href="{{ url_for('swarm_new') }}" class="btn btn-accent">+ Yeni Oğul Kovanı</a>
     </div>
-
-    <nav class="section-tabs">
-        <a href="{{ url_for('apiary_list') }}">Arılıklar</a>
-        <a href="{{ url_for('admin_hives') }}" class="active">Tüm Kovanlar<span class="tab-count">{{ total_count }}</span></a>
-    </nav>
 
     <form method="GET" class="table-filter-bar" id="hiveLiveFilter">
         <input type="search" name="q" class="form-control" value="{{ query }}" placeholder="Kovan, arılık veya durum ara" autocomplete="off">

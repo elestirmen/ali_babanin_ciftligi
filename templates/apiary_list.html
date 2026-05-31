@@ -12,11 +12,6 @@
         <a href="{{ url_for('apiary_new') }}" class="btn btn-accent">+ Yeni Arılık</a>
     </div>
 
-    <nav class="section-tabs">
-        <a href="{{ url_for('apiary_list') }}" class="active">Arılıklar<span class="tab-count">{{ apiaries|length }}</span></a>
-        <a href="{{ url_for('admin_hives') }}">Tüm Kovanlar</a>
-    </nav>
-
     {% if apiaries %}
         <div class="hive-list">
             {% for apiary in apiaries %}

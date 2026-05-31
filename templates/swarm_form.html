@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}{% if edit %}Kovan Düzenle{% else %}Yeni Oğul Kovanı{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
+{% block title %}{% if edit %}Oğul Kovanı Düzenle{% else %}Yeni Oğul Kovanı{% endif %} - Ali Baba'nın Çiftliği{% endblock %}
 
 {% block content %}
 <div class="container">
     <a href="{{ url_for('swarm_list') }}" class="back-link">← Oğul Kovanları</a>
 
     <div class="page-header">
-        <h1>{% if edit %}✏️ Kovan Düzenle{% else %}🏕️ Yeni Oğul Kovanı{% endif %}</h1>
+        <h1>{% if edit %}✏️ Oğul Kovanı Düzenle{% else %}🏕️ Yeni Oğul Kovanı{% endif %}</h1>
     </div>
 
     <div class="card">

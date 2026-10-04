@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.png" alt="ali_babanin_ciftligi simgesi" width="120"></p>
+
 <div align="center">
 
 # Ali Baba'nın Çiftliği
